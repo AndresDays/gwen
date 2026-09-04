@@ -36,3 +36,7 @@
   body:has(#messageInput:focus) .session-button{opacity:0;pointer-events:none}
   .circle{min-width:44px;min-height:44px}
 }
+.latency-row{padding-top:3px}
+.latency-row p{margin:7px 0 0;color:#718096;font:600 9px/1.6 monospace;letter-spacing:.02em}
+@media(display-mode:standalone){.topbar{padding-top:env(safe-area-inset-top);height:calc(86px + env(safe-area-inset-top))}}
+@media(max-width:640px) and (display-mode:standalone){.topbar{height:calc(72px + env(safe-area-inset-top))}}

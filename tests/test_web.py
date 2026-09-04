@@ -130,3 +130,31 @@ def test_voice_endpoint_preserves_mime_and_returns_transcript() -> None:
     assert response.json()["transcript"] == "Hola Gwen"
     assert response.json()["answer"] == "Te escuché."
     assert voice.transcribe.await_args.args[2] == "audio/webm"
+
+
+def test_pwa_assets_are_installable_without_caching_private_data() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    app = create_app(
+        settings=settings,
+        database=Database(settings.database_url),
+        assistant=SimpleNamespace(daily_token_limit=100_000),
+        voice=None,
+    )
+    with TestClient(app, base_url="http://localhost") as client:
+        manifest = client.get("/manifest.webmanifest")
+        worker = client.get("/sw.js")
+        script = client.get("/static/app.js?v=6")
+        assert manifest.status_code == 200
+        assert manifest.json()["display"] == "standalone"
+        assert worker.status_code == 200
+        assert "'/api/'" not in worker.text
+        assert "pathname.startsWith('/static/')" in worker.text
+        assert worker.headers["service-worker-allowed"] == "/"
+        assert "reconnectRealtime" in script.text
+        assert "gwen_voice_latency_v1" in script.text

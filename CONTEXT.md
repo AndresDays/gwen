@@ -91,7 +91,9 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
   TTS Flash a 22.05 kHz/32 kbps mientras la respuesta aún se genera.
 - El usuario puede interrumpir el audio de Gwen hablando; la grabación manual por HTTP
   permanece como respaldo.
-- Última validación conocida: 26 pruebas aprobadas, Ruff y JavaScript limpios.
+- La web es una PWA instalable en iPhone; solo cachea recursos estáticos públicos. Mide
+  latencia por etapa localmente y reconecta WebSocket con backoff al recuperar red o foco.
+- Última validación conocida: 27 pruebas aprobadas, Ruff y JavaScript limpios.
 
 ## Incidente de seguridad resuelto
 

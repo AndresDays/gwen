@@ -83,6 +83,13 @@ Remove-Item .gwen-web-auth.json
 .\stop-gwen-web.ps1
 .\start-gwen-web.ps1
 ```
+## Instalar como app en iPhone
+
+Abre la URL privada de Gwen en Safari, toca **Compartir** y elige **Agregar a inicio**.
+La PWA usa pantalla completa, safe areas y reconexión automática al recuperar Internet o
+volver desde segundo plano. En **Métricas**, después del primer turno de voz, aparece el
+tiempo real hasta transcripción, primer texto, primer audio y primer sonido. Estas mediciones
+se guardan solo en el dispositivo y nunca incluyen el contenido de la conversación.
 ## Elegir la voz
 
 1. En ElevenLabs abre **Voices → Explore**.

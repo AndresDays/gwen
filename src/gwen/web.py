@@ -136,6 +136,21 @@ def create_app(
 
     login_attempts: dict[str, deque[datetime]] = defaultdict(deque)
 
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    async def manifest() -> FileResponse:
+        return FileResponse(
+            str(static_dir.joinpath("manifest.webmanifest")),
+            media_type="application/manifest+json",
+        )
+
+    @app.get("/sw.js", include_in_schema=False)
+    async def service_worker() -> FileResponse:
+        return FileResponse(
+            str(static_dir.joinpath("sw.js")),
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+        )
+
     @app.get("/login", include_in_schema=False)
     async def login_page() -> FileResponse:
         return FileResponse(str(static_dir.joinpath("login.html")))

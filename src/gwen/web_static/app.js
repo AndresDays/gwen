@@ -21,6 +21,41 @@ let continuousSession = null;
 let gwenAudio = null;
 let timer = null;
 
+const LATENCY_KEY = 'gwen_voice_latency_v1';
+
+function latencySamples() {
+  try { return JSON.parse(localStorage.getItem(LATENCY_KEY) || '[]'); }
+  catch (_) { return []; }
+}
+
+function saveLatency(session) {
+  const timing = session.timing;
+  if (!timing?.commit || !timing.transcript || !timing.delta || !timing.audio || !timing.playback || timing.saved) return;
+  timing.saved = true;
+  const sample = {
+    stt: timing.transcript - timing.commit,
+    claude: timing.delta - timing.commit,
+    audio: timing.audio - timing.commit,
+    playback: timing.playback - timing.commit
+  };
+  const samples = [...latencySamples(), sample].slice(-20);
+  try { localStorage.setItem(LATENCY_KEY, JSON.stringify(samples)); } catch (_) {}
+}
+
+function latencyRow() {
+  const samples = latencySamples();
+  if (!samples.length) return null;
+  const latest = samples[samples.length - 1];
+  const row = document.createElement('div'); row.className = 'usage-row latency-row';
+  const head = document.createElement('div');
+  const title = document.createElement('span'); title.textContent = 'Último turno de voz';
+  const amount = document.createElement('span'); amount.textContent = `${(latest.playback / 1000).toFixed(2)} s total`;
+  head.append(title, amount);
+  const detail = document.createElement('p');
+  detail.textContent = `STT ${(latest.stt / 1000).toFixed(2)} · Claude ${(latest.claude / 1000).toFixed(2)} · audio ${(latest.audio / 1000).toFixed(2)} · sonido ${(latest.playback / 1000).toFixed(2)} s`;
+  row.append(head, detail);
+  return row;
+}
 function showToast(text) {
   toast.textContent = text;
   toast.hidden = false;
@@ -127,6 +162,8 @@ document.querySelector('#usageButton').addEventListener('click', async () => {
       if (limit == null) fill.style.opacity = '.28';
       bar.append(fill); row.append(head, bar); return row;
     }));
+    const measuredLatency = latencyRow();
+    if (measuredLatency) usageDetails.append(measuredLatency);
     usageDialog.showModal();
   } catch (error) { showToast(error.message); }
 });
@@ -294,6 +331,10 @@ async function playNextStreamingAudio(session) {
       playNextStreamingAudio(session);
     };
     source.start(0);
+    if (session.timing && !session.timing.playback) {
+      session.timing.playback = performance.now();
+      saveLatency(session);
+    }
   } catch (_) {
     session.audioPlaying = false;
     if (token === session.playbackToken) playNextStreamingAudio(session);
@@ -307,13 +348,16 @@ function handleRealtimeEvent(session, event) {
   } else if (event.type === 'partial' && !session.processing) {
     recordingLabel.textContent = event.text ? `TE ESCUCHO · ${event.text.slice(-52)}` : 'TE ESCUCHO';
   } else if (event.type === 'transcript') {
+    if (session.timing && !session.timing.transcript) session.timing.transcript = performance.now();
     session.generation = event.generation;
     addMessage('user', `🎙️ ${event.text}`);
   } else if (event.type === 'answer_delta' && event.generation === session.generation) {
+    if (session.timing && !session.timing.delta) session.timing.delta = performance.now();
     if (!session.answerBody) session.answerBody = addMessage('assistant', '');
     session.answerBody.textContent += event.text;
     conversation.scrollTo({ top: conversation.scrollHeight, behavior: 'smooth' });
   } else if (event.type === 'audio' && event.generation === session.generation) {
+    if (session.timing && !session.timing.audio) session.timing.audio = performance.now();
     session.audioQueue.push({ audio: event.audio, audioType: event.audio_type });
     playNextStreamingAudio(session);
   } else if (event.type === 'turn_done' && event.generation === session.generation) {
@@ -341,6 +385,44 @@ async function openRealtimeSocket() {
   return socket;
 }
 
+function bindRealtimeSocket(session, socket) {
+  session.socket = socket;
+  session.reconnectAttempts = 0;
+  socket.addEventListener('message', event => {
+    try { handleRealtimeEvent(session, JSON.parse(event.data)); } catch (_) {}
+  });
+  socket.addEventListener('close', () => {
+    if (continuousSession === session && !session.stopping) reconnectRealtime(session);
+  });
+}
+
+async function reconnectRealtime(session) {
+  if (session.reconnecting || session.stopping || continuousSession !== session) return;
+  session.reconnecting = true;
+  stopStreamingAudio(session);
+  session.processing = false;
+  session.speaking = false;
+  setBusy(false);
+  while (continuousSession === session && !session.stopping && session.reconnectAttempts < 6) {
+    session.reconnectAttempts += 1;
+    recordingLabel.textContent = `RECONECTANDO · INTENTO ${session.reconnectAttempts}`;
+    const delay = Math.min(8000, 600 * (2 ** (session.reconnectAttempts - 1)));
+    await new Promise(resolve => window.setTimeout(resolve, delay));
+    if (!navigator.onLine) continue;
+    try {
+      const socket = await openRealtimeSocket();
+      bindRealtimeSocket(session, socket);
+      session.reconnecting = false;
+      if (session.context.state === 'suspended') await session.context.resume();
+      recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS';
+      return;
+    } catch (_) {}
+  }
+  session.reconnecting = false;
+  recordingLabel.textContent = 'SIN CONEXIÓN · FINALIZA E INTENTA DE NUEVO';
+  showToast('No pude recuperar la conexión de voz.');
+}
+
 async function startContinuousSession() {
   const AudioEngine = window.AudioContext || window.webkitAudioContext;
   const context = new AudioEngine();
@@ -357,7 +439,7 @@ async function startContinuousSession() {
   if (microphoneSelect.value) audio.deviceId = { exact: microphoneSelect.value };
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio }); }
-  catch (error) { socket.close(); throw error; }
+  catch (error) { socket.close(); await context.close(); throw error; }
   await refreshMicrophones();
   const source = context.createMediaStreamSource(stream);
   const processor = context.createScriptProcessor(2048, 1, 1);
@@ -366,33 +448,25 @@ async function startContinuousSession() {
     socket, stream, context, source, processor, silent, ready: false, processing: false,
     speaking: false, speechFrames: 0, silenceStarted: 0, startedSpeakingAt: 0,
     noiseFloor: .003, generation: 0, answerBody: null, audioQueue: [], serverDone: false,
-    audioSource: null, audioPlaying: false, playbackToken: 0
+    audioSource: null, audioPlaying: false, playbackToken: 0, timing: null,
+    stopping: false, reconnecting: false, reconnectAttempts: 0
   };
   continuousSession = session;
-  socket.addEventListener('message', event => {
-    try { handleRealtimeEvent(session, JSON.parse(event.data)); } catch (_) {}
-  });
-  socket.addEventListener('close', () => {
-    if (continuousSession === session) {
-      showToast('Se cerró la voz en vivo. Puedes seguir usando el botón de micrófono.');
-      stopContinuousSession();
-    }
-  });
+  bindRealtimeSocket(session, socket);
   processor.onaudioprocess = event => {
-    if (continuousSession !== session || socket.readyState !== WebSocket.OPEN) return;
+    if (continuousSession !== session || session.socket.readyState !== WebSocket.OPEN) return;
     const samples = new Float32Array(event.inputBuffer.getChannelData(0));
     let energy = 0;
     for (const sample of samples) energy += sample * sample;
     const rms = Math.sqrt(energy / samples.length);
     inputLevel.style.width = `${Math.min(100, rms * 900)}%`;
     const threshold = Math.max(.006, session.noiseFloor * 3);
-
     if (session.processing) {
       const interruptionThreshold = Math.max(.014, session.noiseFloor * 4.5);
       session.speechFrames = rms > interruptionThreshold ? session.speechFrames + 1 : 0;
       if (session.speechFrames < 3) return;
       stopStreamingAudio(session);
-      socket.send(JSON.stringify({ type: 'interrupt' }));
+      session.socket.send(JSON.stringify({ type: 'interrupt' }));
       session.processing = false;
       session.speaking = true;
       session.startedSpeakingAt = performance.now();
@@ -400,8 +474,7 @@ async function startContinuousSession() {
       session.answerBody = null;
       recordingLabel.textContent = 'TE ESCUCHO';
     }
-
-    socket.send(JSON.stringify({ type: 'audio', audio: pcmBase64(resample(samples, context.sampleRate)) }));
+    session.socket.send(JSON.stringify({ type: 'audio', audio: pcmBase64(resample(samples, context.sampleRate)) }));
     if (!session.speaking) {
       if (rms < .02) session.noiseFloor = session.noiseFloor * .98 + rms * .02;
       session.speechFrames = rms > threshold ? session.speechFrames + 1 : 0;
@@ -418,12 +491,13 @@ async function startContinuousSession() {
     } else session.silenceStarted = 0;
     const utteranceSeconds = (performance.now() - session.startedSpeakingAt) / 1000;
     if ((session.silenceStarted && performance.now() - session.silenceStarted > 420 && utteranceSeconds > .45) || utteranceSeconds > 45) {
-      socket.send(JSON.stringify({ type: 'commit', duration: Math.max(1, Math.round(utteranceSeconds)) }));
+      session.socket.send(JSON.stringify({ type: 'commit', duration: Math.max(1, Math.round(utteranceSeconds)) }));
       session.processing = true;
       session.speaking = false;
       session.speechFrames = 0;
       session.answerBody = null;
       session.serverDone = false;
+      session.timing = { commit: performance.now() };
       recordingLabel.textContent = 'GWEN ESTÁ PENSANDO';
       setBusy(true);
     }
@@ -434,10 +508,10 @@ async function startContinuousSession() {
   micButton.disabled = true; recordingStatus.hidden = false; recordingTime.textContent = 'LIVE';
   recordingLabel.textContent = 'CONECTANDO VOZ EN VIVO…';
 }
-
 async function stopContinuousSession() {
   const session = continuousSession;
   if (!session) return;
+  session.stopping = true;
   continuousSession = null;
   stopStreamingAudio(session);
   if (session.socket.readyState === WebSocket.OPEN) {
@@ -463,6 +537,17 @@ micButton.addEventListener('click', async () => {
   }
   catch (_) { showToast('No pude abrir ese micrófono. Revisa el permiso o elige otra entrada.'); }
 });
+window.addEventListener('online', () => {
+  if (continuousSession && continuousSession.socket.readyState !== WebSocket.OPEN) reconnectRealtime(continuousSession);
+});
+document.addEventListener('visibilitychange', async () => {
+  if (!continuousSession || document.visibilityState !== 'visible') return;
+  if (continuousSession.context.state === 'suspended') await continuousSession.context.resume().catch(() => {});
+  if (continuousSession.socket.readyState !== WebSocket.OPEN) reconnectRealtime(continuousSession);
+});
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
 navigator.mediaDevices?.addEventListener?.('devicechange', refreshMicrophones);
 refreshMicrophones();
 loadState();
