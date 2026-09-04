@@ -280,7 +280,7 @@ async function startContinuousSession() {
   await refreshMicrophones();
   const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
-  const processor = context.createScriptProcessor(4096, 1, 1);
+  const processor = context.createScriptProcessor(2048, 1, 1);
   const silent = context.createGain(); silent.gain.value = 0;
   const session = {
     stream, context, source, processor, silent, processing: false, speaking: false,
@@ -298,7 +298,7 @@ async function startContinuousSession() {
     if (!session.speaking) {
       if (rms < .02) session.noiseFloor = session.noiseFloor * .98 + rms * .02;
       session.preRoll.push(samples);
-      if (session.preRoll.length > 7) session.preRoll.shift();
+      if (session.preRoll.length > 12) session.preRoll.shift();
       session.speechFrames = rms > threshold ? session.speechFrames + 1 : 0;
       if (session.speechFrames >= 2) {
         session.speaking = true;
@@ -314,8 +314,8 @@ async function startContinuousSession() {
     } else {
       session.silenceStarted = 0;
     }
-    const utteranceSeconds = session.utterance.length * 4096 / context.sampleRate;
-    if ((session.silenceStarted && performance.now() - session.silenceStarted > 900 && utteranceSeconds > .65) || utteranceSeconds > 45) {
+    const utteranceSeconds = session.utterance.length * processor.bufferSize / context.sampleRate;
+    if ((session.silenceStarted && performance.now() - session.silenceStarted > 550 && utteranceSeconds > .65) || utteranceSeconds > 45) {
       sendContinuousTurn(session);
     }
   };

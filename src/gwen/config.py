@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str | None = None
     elevenlabs_voice_id: str | None = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
+    elevenlabs_web_tts_model: str = "eleven_flash_v2_5"
     elevenlabs_stt_model: str = "scribe_v1"
     elevenlabs_web_stt_model: str = "scribe_v2"
     history_limit: int = Field(default=20, ge=2, le=100)

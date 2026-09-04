@@ -54,7 +54,8 @@ Luego abre `http://127.0.0.1:8765`. Para detenerla:
 ```
 
 Permite escribir, grabar manualmente o iniciar una sesión de escucha continua con
-detección automática de turnos, revisar la transcripción, escuchar la respuesta,
+detección automática de turnos, cierre rápido por silencio, Scribe v2 y voz Flash,
+revisar la transcripción, escuchar la respuesta,
 iniciar una conversación nueva y consultar el consumo diario. Las claves nunca llegan al navegador.
 ## Elegir la voz
 

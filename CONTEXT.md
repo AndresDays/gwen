@@ -87,6 +87,8 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
 - La interfaz web tiene un diseño futurista responsive sin recursos remotos.
 - La web ofrece una sesión de escucha continua con VAD local, cierre automático por
   silencio, respuesta hablada y reanudación de escucha; conserva grabación manual.
+- La ruta de voz web de baja latencia usa conexiones HTTP persistentes, TTS Flash
+  v2.5 a 22.05 kHz/32 kbps y cierre de turno a unos 550 ms de silencio.
 - Última validación conocida: 20 pruebas aprobadas y Ruff limpio.
 
 ## Incidente de seguridad resuelto
