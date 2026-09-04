@@ -69,10 +69,6 @@ permitir ediciones. La opción de commit solo se ejecuta si el repositorio estab
 limpio y las validaciones configuradas terminan correctamente. Los proyectos se
 definen explícitamente en `gwen-code-workspaces.json`; `.env` y secretos están
 bloqueados.
-Desde el iPhone, el botón compacto **Código** permite volver a introducir la
-contraseña privada y habilitar órdenes habladas durante 10 minutos. Este permiso
-usa una cookie firmada, separada de la sesión normal, y nunca almacena la
-contraseña. La computadora debe seguir encendida y Gwen activa.
 ## Acceso privado desde iPhone
 
 Gwen puede publicarse solo dentro de una red privada Tailscale, con HTTPS y sin abrir

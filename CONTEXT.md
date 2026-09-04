@@ -93,7 +93,7 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
   permanece como respaldo.
 - La web es una PWA instalable en iPhone; solo cachea recursos estáticos públicos. Mide
   latencia por etapa localmente y reconecta WebSocket con backoff al recuperar red o foco.
-- Última validación conocida: 33 pruebas aprobadas, Ruff y JavaScript limpios.
+- Última validación conocida: 32 pruebas aprobadas, Ruff y JavaScript limpios.
 
 ## Incidente de seguridad resuelto
 

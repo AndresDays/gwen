@@ -10,7 +10,6 @@ from starlette.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 COOKIE_NAME = "gwen_session"
-CODE_COOKIE_NAME = "gwen_code_unlock"
 
 
 def password_hash(password: str, salt: bytes | None = None) -> str:
@@ -38,26 +37,6 @@ def create_session(secret: str, lifetime_seconds: int = 2_592_000) -> str:
     return f"{expires}.{signature}"
 
 
-def create_scoped_session(secret: str, scope: str, lifetime_seconds: int) -> str:
-    expires = str(int(time.time()) + lifetime_seconds)
-    payload = f"{scope}:{expires}"
-    signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{expires}.{signature}"
-
-
-def verify_scoped_session(token: str | None, secret: str, scope: str) -> bool:
-    if not token:
-        return False
-    try:
-        expires, signature = token.split(".", 1)
-        if int(expires) < int(time.time()):
-            return False
-        payload = f"{scope}:{expires}"
-        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(signature, expected)
-    except (ValueError, TypeError):
-        return False
-
 def verify_session(token: str | None, secret: str) -> bool:
     if not token:
         return False
@@ -71,15 +50,11 @@ def verify_session(token: str | None, secret: str) -> bool:
         return False
 
 
-def cookie_value_from_scope(scope: Scope, name: str) -> str | None:
+def cookie_from_scope(scope: Scope) -> str | None:
     cookie = SimpleCookie()
     cookie.load(Headers(scope=scope).get("cookie", ""))
-    morsel = cookie.get(name)
+    morsel = cookie.get(COOKIE_NAME)
     return morsel.value if morsel else None
-
-
-def cookie_from_scope(scope: Scope) -> str | None:
-    return cookie_value_from_scope(scope, COOKIE_NAME)
 
 
 class SecurityHeadersMiddleware:

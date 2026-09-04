@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>GWEN // Neural Interface</title>
-  <link rel="stylesheet" href="/static/styles.css?v=10">
+  <link rel="stylesheet" href="/static/styles.css?v=9">
 </head>
 <body>
   <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -24,7 +24,6 @@
       <div class="header-actions">
         <button id="sessionButton" class="session-button" type="button"><span></span> Iniciar voz</button>
         <button id="codeButton" class="quiet" type="button" hidden>&lt;/&gt; Código</button>
-        <button id="unlockCodeButton" class="quiet unlock-code" type="button" hidden aria-label="Autorizar programación">⌁<span> Código</span></button>
         <button id="usageButton" class="quiet" type="button"><span class="button-dot"></span> Métricas</button>
         <button id="newButton" class="quiet" type="button">＋ Nueva sesión</button>
       </div>
@@ -57,16 +56,6 @@
     </section>
   </main>
 
-  <dialog id="codeUnlockDialog" class="code-unlock-dialog">
-    <div class="dialog-scan"></div><button id="closeCodeUnlock" class="dialog-close" aria-label="Cerrar">×</button>
-    <p class="eyebrow">AUTORIZACIÓN TEMPORAL</p><h2>Desbloquear programación</h2>
-    <p>Habilita órdenes de código por voz durante 10 minutos en este dispositivo.</p>
-    <form id="codeUnlockForm" class="login-form">
-      <label for="codeUnlockPassword">Contraseña privada de Gwen</label>
-      <input id="codeUnlockPassword" type="password" minlength="12" maxlength="256" autocomplete="current-password" required>
-      <button type="submit">Autorizar por 10 minutos</button>
-    </form>
-  </dialog>
   <dialog id="codeDialog" class="code-dialog">
     <div class="dialog-scan"></div><button id="closeCode" class="dialog-close" aria-label="Cerrar">×</button>
     <p class="eyebrow">CLAUDE CODE · CONTROL LOCAL</p><h2>Programar con Gwen</h2>
@@ -87,6 +76,6 @@
     <div id="usageDetails" class="usage-details"></div>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
-  <script src="/static/app.js?v=10" defer></script>
+  <script src="/static/app.js?v=9" defer></script>
 </body>
 </html>

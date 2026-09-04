@@ -30,7 +30,6 @@ def test_web_interface_serves_private_chat_and_state() -> None:
         assert "microphoneSelect" in home.text
         assert "sessionButton" in home.text
         assert "codeButton" in home.text
-        assert "unlockCodeButton" in home.text
 
         response = client.post("/api/chat", json={"message": "hola"})
         assert response.status_code == 200
@@ -151,7 +150,7 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
     with TestClient(app, base_url="http://localhost") as client:
         manifest = client.get("/manifest.webmanifest")
         worker = client.get("/sw.js")
-        script = client.get("/static/app.js?v=10")
+        script = client.get("/static/app.js?v=9")
         home = client.get("/")
         assert manifest.status_code == 200
         assert manifest.json()["display"] == "standalone"
@@ -163,7 +162,7 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
         assert "gwen_voice_latency_v1" in script.text
         assert "mobileVoiceDock" in home.text
         assert "syncStandaloneLayout" in script.text
-        assert "gwen-shell-v10" in worker.text
+        assert "gwen-shell-v9" in worker.text
 
 
 def test_code_endpoints_use_only_the_injected_local_worker() -> None:
