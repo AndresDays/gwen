@@ -1,6 +1,9 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 $tailscale = Get-Command tailscale -ErrorAction SilentlyContinue
+if (-not $tailscale -and (Test-Path -LiteralPath "C:\Program Files\Tailscale\tailscale.exe")) {
+    $tailscale = Get-Item -LiteralPath "C:\Program Files\Tailscale\tailscale.exe"
+}
 if (-not $tailscale) {
     throw "Tailscale no está instalado. Instálalo en esta PC y en el iPhone, inicia sesión en ambos y vuelve a ejecutar este script."
 }
