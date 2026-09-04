@@ -17,6 +17,7 @@ from fastapi import (
     Form,
     HTTPException,
     Request,
+    Response,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
@@ -35,12 +36,16 @@ from gwen.main import configure_logging
 from gwen.realtime import run_realtime_voice
 from gwen.repository import Repository
 from gwen.security import (
+    CODE_COOKIE_NAME,
     COOKIE_NAME,
     PrivateAccessMiddleware,
     SecurityHeadersMiddleware,
+    cookie_value_from_scope,
+    create_scoped_session,
     create_session,
     public_hostname,
     verify_password,
+    verify_scoped_session,
 )
 from gwen.voice import ElevenLabsVoice
 
@@ -63,6 +68,10 @@ class CodeTaskRequest(BaseModel):
     workspace_id: str = Field(min_length=1, max_length=64)
     task: str = Field(min_length=1, max_length=12_000)
     commit: bool = False
+
+
+class CodeUnlockRequest(BaseModel):
+    password: str = Field(min_length=12, max_length=256)
 
 
 class CodePlanResponse(BaseModel):
@@ -157,6 +166,7 @@ def create_app(
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     login_attempts: dict[str, deque[datetime]] = defaultdict(deque)
+    code_unlock_attempts: dict[str, deque[datetime]] = defaultdict(deque)
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
     async def manifest() -> FileResponse:
@@ -244,21 +254,57 @@ def create_app(
             "voice_enabled": voice is not None,
         }
 
-    def local_code_worker(request: Request) -> ClaudeCodeWorker:
-        if request.url.hostname not in {"127.0.0.1", "localhost", "testserver"}:
-            raise HTTPException(403, "La programación solo está disponible desde esta PC.")
+    def code_access_allowed(request: Request) -> bool:
+        if request.url.hostname in {"127.0.0.1", "localhost", "testserver"}:
+            return True
+        return verify_scoped_session(
+            request.cookies.get(CODE_COOKIE_NAME),
+            settings.web_session_secret or "",
+            "code",
+        )
+
+    def authorized_code_worker(request: Request) -> ClaudeCodeWorker:
+        if not code_access_allowed(request):
+            raise HTTPException(403, "Desbloquea programación con tu contraseña.")
         if code_worker is None:
             raise HTTPException(503, "Claude Code no está configurado.")
         return code_worker
 
+    @app.post("/api/code/unlock", status_code=204)
+    async def code_unlock(request: Request, payload: CodeUnlockRequest) -> Response:
+        if not settings.web_remote_enabled:
+            return Response(status_code=204)
+        client = request.client.host if request.client else "unknown"
+        now = datetime.now(ZoneInfo("America/Guatemala"))
+        cutoff = now - timedelta(minutes=15)
+        attempts = code_unlock_attempts[client]
+        while attempts and attempts[0] < cutoff:
+            attempts.popleft()
+        if len(attempts) >= 5:
+            raise HTTPException(429, "Demasiados intentos. Espera 15 minutos.")
+        if not verify_password(payload.password, settings.web_password_hash or ""):
+            attempts.append(now)
+            raise HTTPException(401, "Contraseña incorrecta.")
+        attempts.clear()
+        response = Response(status_code=204)
+        response.set_cookie(
+            CODE_COOKIE_NAME,
+            create_scoped_session(settings.web_session_secret or "", "code", 600),
+            secure=True,
+            httponly=True,
+            samesite="strict",
+            max_age=600,
+            path="/",
+        )
+        return response
     @app.get("/api/code/workspaces")
     async def code_workspaces(request: Request) -> dict[str, object]:
-        worker = local_code_worker(request)
+        worker = authorized_code_worker(request)
         return {"workspaces": worker.public_workspaces()}
 
     @app.post("/api/code/plan", response_model=CodePlanResponse)
     async def code_plan(request: Request, payload: CodeTaskRequest) -> CodePlanResponse:
-        worker = local_code_worker(request)
+        worker = authorized_code_worker(request)
         try:
             return CodePlanResponse(plan=await worker.plan(payload.workspace_id, payload.task))
         except ValueError as error:
@@ -271,7 +317,7 @@ def create_app(
     async def code_execute(
         request: Request, payload: CodeTaskRequest
     ) -> CodeExecutionResponse:
-        worker = local_code_worker(request)
+        worker = authorized_code_worker(request)
         try:
             result = await worker.execute(payload.workspace_id, payload.task, payload.commit)
             return CodeExecutionResponse(**result)
@@ -306,11 +352,12 @@ def create_app(
             await websocket.close(code=1008, reason="La voz no está configurada.")
             return
         try:
-            voice_code_worker = (
-                code_worker
-                if websocket.url.hostname in {"127.0.0.1", "localhost", "testserver"}
-                else None
+            local_code = websocket.url.hostname in {"127.0.0.1", "localhost", "testserver"}
+            unlock_token = cookie_value_from_scope(websocket.scope, CODE_COOKIE_NAME)
+            remote_code = verify_scoped_session(
+                unlock_token, settings.web_session_secret or "", "code"
             )
+            voice_code_worker = code_worker if local_code or remote_code else None
             await run_realtime_voice(
                 websocket, settings, database, assistant, voice, voice_code_worker
             )

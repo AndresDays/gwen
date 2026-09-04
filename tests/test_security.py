@@ -5,7 +5,14 @@ from fastapi.testclient import TestClient
 
 from gwen.config import Settings
 from gwen.database import Database
-from gwen.security import create_session, password_hash, verify_password, verify_session
+from gwen.security import (
+    create_scoped_session,
+    create_session,
+    password_hash,
+    verify_password,
+    verify_scoped_session,
+    verify_session,
+)
 from gwen.web import create_app
 
 
@@ -30,6 +37,9 @@ def test_password_and_signed_session_validation() -> None:
     token = create_session("secret")
     assert verify_session(token, "secret")
     assert not verify_session(token, "another-secret")
+    code_token = create_scoped_session("secret", "code", 600)
+    assert verify_scoped_session(code_token, "secret", "code")
+    assert not verify_scoped_session(token, "secret", "code")
 
 
 def test_remote_mode_requires_login_and_rejects_cross_site_writes() -> None:
@@ -73,3 +83,33 @@ def test_remote_mode_refuses_incomplete_or_non_https_configuration() -> None:
         assert "requiere" in str(error)
     else:
         raise AssertionError("Remote mode must fail closed")
+
+
+def test_remote_code_requires_short_lived_password_unlock() -> None:
+    password = "una contraseña bastante larga"
+    settings = remote_settings(password)
+    worker = SimpleNamespace(public_workspaces=lambda: [{"id": "gwen", "label": "Gwen"}])
+    app = create_app(
+        settings=settings,
+        database=Database(settings.database_url),
+        assistant=SimpleNamespace(daily_token_limit=100_000),
+        voice=None,
+        code_worker=worker,
+    )
+    headers = {"Origin": settings.web_public_origin}
+    with TestClient(app, base_url=settings.web_public_origin) as client:
+        client.post("/api/login", data={"password": password}, follow_redirects=False)
+        assert client.get("/api/code/workspaces").status_code == 403
+        wrong = client.post(
+            "/api/code/unlock", json={"password": "contraseña equivocada"}, headers=headers
+        )
+        assert wrong.status_code == 401
+        unlocked = client.post(
+            "/api/code/unlock", json={"password": password}, headers=headers
+        )
+        assert unlocked.status_code == 204
+        cookie = unlocked.headers["set-cookie"]
+        assert "gwen_code_unlock=" in cookie
+        assert "Max-Age=600" in cookie
+        assert "HttpOnly" in cookie and "Secure" in cookie and "SameSite=strict" in cookie
+        assert client.get("/api/code/workspaces").status_code == 200

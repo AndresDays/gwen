@@ -9,6 +9,10 @@ const recordingStatus = document.querySelector('#recordingStatus');
 const recordingTime = document.querySelector('#recordingTime');
 const usageDialog = document.querySelector('#usageDialog');
 const codeButton = document.querySelector('#codeButton');
+const unlockCodeButton = document.querySelector('#unlockCodeButton');
+const codeUnlockDialog = document.querySelector('#codeUnlockDialog');
+const codeUnlockForm = document.querySelector('#codeUnlockForm');
+const codeUnlockPassword = document.querySelector('#codeUnlockPassword');
 const codeDialog = document.querySelector('#codeDialog');
 const codeForm = document.querySelector('#codeForm');
 const codeWorkspace = document.querySelector('#codeWorkspace');
@@ -190,6 +194,31 @@ document.querySelector('#usageButton').addEventListener('click', async () => {
   } catch (error) { showToast(error.message); }
 });
 document.querySelector('#closeUsage').addEventListener('click', () => usageDialog.close());
+const localCodeHost = ['localhost', '127.0.0.1'].includes(location.hostname);
+if (!localCodeHost) unlockCodeButton.hidden = false;
+unlockCodeButton.addEventListener('click', () => codeUnlockDialog.showModal());
+document.querySelector('#closeCodeUnlock').addEventListener('click', () => codeUnlockDialog.close());
+codeUnlockForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    await request('/api/code/unlock', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: codeUnlockPassword.value })
+    });
+    codeUnlockPassword.value = ''; codeUnlockDialog.close();
+    unlockCodeButton.classList.add('code-unlocked');
+    unlockCodeButton.querySelector('span').textContent = ' Código activo';
+    showToast('Programación por voz activa durante 10 minutos');
+    window.setTimeout(() => {
+      unlockCodeButton.classList.remove('code-unlocked');
+      unlockCodeButton.querySelector('span').textContent = ' Código';
+    }, 600000);
+    if (continuousSession) {
+      await stopContinuousSession();
+      await startContinuousSession();
+    }
+  } catch (error) { showToast(error.message); }
+});
 async function loadCodeWorkspaces() {
   try {
     const result = await request('/api/code/workspaces');
