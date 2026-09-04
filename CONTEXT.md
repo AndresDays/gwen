@@ -129,6 +129,10 @@ autenticadas.
 
 ## App nativa iPhone — dirección acordada
 
+- En la PWA instalada de iPhone, el control `Iniciar voz` ahora ocupa un dock
+  propio sobre el compositor; ya no usa posicionamiento flotante que pueda
+  encimarse con el campo de texto o con los mensajes.
+
 - Solo se necesita inicialmente para el iPhone del usuario.
 - El usuario tiene una Mac, no tiene membresía Apple Developer de pago y acepta
   instalar una build de desarrollo.

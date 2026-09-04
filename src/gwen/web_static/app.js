@@ -17,11 +17,25 @@ const microphoneSelect = document.querySelector('#microphoneSelect');
 const inputLevel = document.querySelector('#inputLevel');
 const recordingLabel = document.querySelector('#recordingLabel');
 const sessionButton = document.querySelector('#sessionButton');
+const mobileVoiceDock = document.querySelector('#mobileVoiceDock');
+const headerActions = document.querySelector('.header-actions');
+const usageButton = document.querySelector('#usageButton');
 let continuousSession = null;
 let gwenAudio = null;
 let timer = null;
 
 const LATENCY_KEY = 'gwen_voice_latency_v1';
+
+function syncStandaloneLayout() {
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const dockVoiceButton = standalone && window.matchMedia('(max-width: 640px)').matches;
+  document.documentElement.classList.toggle('standalone-app', standalone);
+  if (dockVoiceButton) mobileVoiceDock.append(sessionButton);
+  else if (sessionButton.parentElement !== headerActions) headerActions.insertBefore(sessionButton, usageButton);
+}
+
+syncStandaloneLayout();
+window.addEventListener('resize', syncStandaloneLayout);
 
 function latencySamples() {
   try { return JSON.parse(localStorage.getItem(LATENCY_KEY) || '[]'); }

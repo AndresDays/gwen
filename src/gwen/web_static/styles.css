@@ -3,6 +3,7 @@
 @media(max-width:640px){.session-button{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);z-index:5;white-space:nowrap}.session-button:hover{transform:translateX(-50%)}.session-button.active{transform:translateX(-50%)}.shell{padding:0 14px}.topbar{height:72px}.header-actions .quiet:first-child{display:none}.quiet{padding:9px}.message{max-width:90%}.composer-wrap{padding-bottom:12px}.footer-line>span,.footer-line>i{display:none}.footer-line{justify-content:center}.footer-line b{display:none}.welcome{padding-bottom:9vh}.capabilities span:last-child{display:none}.core{transform:scale(.87);margin-bottom:22px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .session-button{border:1px solid rgba(112,248,232,.3);background:linear-gradient(135deg,rgba(112,248,232,.12),rgba(110,141,255,.09));border-radius:9px;padding:9px 14px;font:650 10px/1 monospace;letter-spacing:.08em;cursor:pointer;transition:.2s}.session-button span{display:inline-block;width:7px;height:7px;margin-right:6px;border:1px solid var(--cyan);border-radius:50%;box-shadow:0 0 9px var(--cyan)}.session-button:hover{border-color:var(--cyan);box-shadow:0 0 25px rgba(112,248,232,.1)}.session-button.active{color:#08110f;background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 28px rgba(112,248,232,.22)}.session-button.active span{background:#07110f;border-color:#07110f;box-shadow:none}.shell.voice-session .core::before{animation-duration:1.5s}.shell.voice-session .core-ring.a{border-color:rgba(112,248,232,.65);border-left-color:transparent}.shell.voice-session .composer{border-color:rgba(112,248,232,.38)}
+.mobile-voice-dock{display:none}
 .login-shell {
   min-height: 100vh; display: grid; place-items: center; padding: 24px;
   background: radial-gradient(circle at 50% 20%, rgba(73, 231, 255, .13), transparent 38%);
@@ -40,3 +41,12 @@
 .latency-row p{margin:7px 0 0;color:#718096;font:600 9px/1.6 monospace;letter-spacing:.02em}
 @media(display-mode:standalone){.topbar{padding-top:env(safe-area-inset-top);height:calc(86px + env(safe-area-inset-top))}}
 @media(max-width:640px) and (display-mode:standalone){.topbar{height:calc(72px + env(safe-area-inset-top))}}
+@media(max-width:640px){
+  .standalone-app .conversation{padding-bottom:18px}
+  .standalone-app .mobile-voice-dock{display:block;width:min(800px,100%);margin:0 auto 11px}
+  .standalone-app .mobile-voice-dock .session-button,
+  .standalone-app .shell.voice-session .mobile-voice-dock .session-button{
+    position:static;display:block;width:100%;min-height:48px;transform:none
+  }
+  .standalone-app body:has(#messageInput:focus) .mobile-voice-dock{display:none}
+}

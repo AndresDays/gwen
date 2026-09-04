@@ -149,7 +149,8 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
     with TestClient(app, base_url="http://localhost") as client:
         manifest = client.get("/manifest.webmanifest")
         worker = client.get("/sw.js")
-        script = client.get("/static/app.js?v=6")
+        script = client.get("/static/app.js?v=7")
+        home = client.get("/")
         assert manifest.status_code == 200
         assert manifest.json()["display"] == "standalone"
         assert worker.status_code == 200
@@ -158,3 +159,6 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
         assert worker.headers["service-worker-allowed"] == "/"
         assert "reconnectRealtime" in script.text
         assert "gwen_voice_latency_v1" in script.text
+        assert "mobileVoiceDock" in home.text
+        assert "syncStandaloneLayout" in script.text
+        assert "gwen-shell-v7" in worker.text

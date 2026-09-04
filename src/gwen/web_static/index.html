@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>GWEN // Neural Interface</title>
-  <link rel="stylesheet" href="/static/styles.css?v=6">
+  <link rel="stylesheet" href="/static/styles.css?v=7">
 </head>
 <body>
   <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -41,6 +41,7 @@
     </section>
 
     <section class="composer-wrap">
+      <div id="mobileVoiceDock" class="mobile-voice-dock"></div>
       <div id="recordingStatus" class="recording-status" hidden>
         <div class="live-wave"><i></i><i></i><i></i><i></i><i></i></div><span id="recordingLabel">CAPTURANDO VOZ</span><div class="input-meter" aria-label="Nivel del micrófono"><i id="inputLevel"></i></div><strong id="recordingTime">0:00</strong>
       </div>
@@ -60,6 +61,6 @@
     <div id="usageDetails" class="usage-details"></div>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
-  <script src="/static/app.js?v=6" defer></script>
+  <script src="/static/app.js?v=7" defer></script>
 </body>
 </html>
