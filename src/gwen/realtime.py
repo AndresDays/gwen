@@ -11,6 +11,8 @@ from fastapi import WebSocket
 from websockets.asyncio.client import connect
 
 from gwen.assistant import GwenAssistant
+from gwen.code_voice import PendingCodeTask, code_confirmation, detect_code_request
+from gwen.code_worker import ClaudeCodeWorker
 from gwen.config import Settings
 from gwen.database import Database
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
@@ -46,11 +48,13 @@ async def run_realtime_voice(
     database: Database,
     assistant: GwenAssistant,
     voice: ElevenLabsVoice,
+    code_worker: ClaudeCodeWorker | None = None,
 ) -> None:
     await websocket.accept()
     send_lock = asyncio.Lock()
     processing: asyncio.Task[None] | None = None
     generation = 0
+    pending_code: PendingCodeTask | None = None
 
     async def send(kind: str, **payload: object) -> None:
         async with send_lock:
@@ -90,16 +94,56 @@ async def run_realtime_voice(
         buffer = ""
         try:
             await send("transcript", generation=turn, text=transcript)
-            async with database.session() as session:
-                repository = Repository(session)
-                async for delta in assistant.stream_reply(
-                    settings.telegram_allowed_user_id, transcript, repository
-                ):
-                    await send("answer_delta", generation=turn, text=delta)
-                    buffer += delta
-                    ready, buffer = split_speech(buffer)
-                    for segment in ready:
-                        await queue.put(segment)
+            code_answer: str | None = None
+            if code_worker is not None and pending_code is not None:
+                confirmation = code_confirmation(transcript)
+                if confirmation is None:
+                    code_answer = (
+                        "Tengo un plan pendiente. Di sí, ejecútalo; sí, y haz commit; "
+                        "o cancela."
+                    )
+                elif not confirmation[0]:
+                    pending_code = None
+                    code_answer = "Entendido. Cancelé la tarea de programación."
+                else:
+                    task = pending_code
+                    pending_code = None
+                    result = await code_worker.execute(
+                        task.workspace_id, task.task, commit=confirmation[1]
+                    )
+                    status = (
+                        "Las pruebas pasaron y creé el commit."
+                        if result["committed"]
+                        else "Terminé los cambios y las pruebas pasaron, sin crear commit."
+                    )
+                    code_answer = f"{result['answer']}\n\n{status}"
+            elif code_worker is not None:
+                request = detect_code_request(transcript)
+                if request is not None:
+                    workspace_id, task = request
+                    plan = await code_worker.plan(workspace_id, task)
+                    pending_code = PendingCodeTask(workspace_id, task, plan)
+                    code_answer = (
+                        f"Este es el plan para {workspace_id}: {plan}\n\n"
+                        "¿Quieres que lo ejecute? También puedes decir: sí, y haz commit."
+                    )
+            if code_answer is not None:
+                await send("answer_delta", generation=turn, text=code_answer)
+                buffer = code_answer
+                ready, buffer = split_speech(buffer)
+                for segment in ready:
+                    await queue.put(segment)
+            else:
+                async with database.session() as session:
+                    repository = Repository(session)
+                    async for delta in assistant.stream_reply(
+                        settings.telegram_allowed_user_id, transcript, repository
+                    ):
+                        await send("answer_delta", generation=turn, text=delta)
+                        buffer += delta
+                        ready, buffer = split_speech(buffer)
+                        for segment in ready:
+                            await queue.put(segment)
             ready, _ = split_speech(buffer, force=True)
             for segment in ready:
                 await queue.put(segment)
