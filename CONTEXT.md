@@ -150,8 +150,12 @@ autenticadas.
 - La meta posterior es pagar Apple Developer Program (precio consultado: USD 99
   por año, sujeto a región/impuestos) cuando el prototipo demuestre valor.
 
-Antes de crear la app faltan modelo de iPhone, versión de iOS, modelo/año de la
-Mac, versión de macOS y confirmar si Xcode está instalado.
+Hardware confirmado para la app nativa:
+
+- iPhone 16 Pro Max con iOS 26.6.
+- MacBook Pro M4 con macOS Sequoia 15.7.7.
+- Xcode todavía no está instalado; el siguiente paso es instalar Xcode 26.3 o
+  una versión posterior compatible desde Apple antes de generar la build.
 
 ## Modo de programación futuro
 
