@@ -43,7 +43,7 @@ def get_settings() -> Settings:
     auth_path = Path(".gwen-web-auth.json")
     overrides: dict[str, object] = {}
     if auth_path.is_file():
-        stored = json.loads(auth_path.read_text(encoding="utf-8"))
+        stored = json.loads(auth_path.read_text(encoding="utf-8-sig"))
         allowed = {
             "web_remote_enabled",
             "web_password_hash",
