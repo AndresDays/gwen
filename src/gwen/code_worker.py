@@ -53,6 +53,10 @@ class ClaudeCodeWorker:
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(), timeout=timeout or self.timeout_seconds
             )
+        except asyncio.CancelledError:
+            process.kill()
+            await process.communicate()
+            raise
         except TimeoutError:
             process.kill()
             await process.communicate()
