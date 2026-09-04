@@ -111,15 +111,36 @@ async def run_realtime_voice(
             speaker.cancel()
             await asyncio.gather(speaker, return_exceptions=True)
             raise
-        except (httpx.HTTPError, ProviderUnavailable, DailyUsageLimitReached, InputTooLong):
+        except (
+            httpx.HTTPError,
+            ProviderUnavailable,
+            DailyUsageLimitReached,
+            InputTooLong,
+        ) as error:
             speaker.cancel()
             await asyncio.gather(speaker, return_exceptions=True)
-            await send("error", generation=turn, message="Gwen tuvo un problema temporal.")
+            if isinstance(error, DailyUsageLimitReached):
+                message = "Llegamos al límite diario de Claude configurado."
+            elif isinstance(error, InputTooLong):
+                message = "Ese mensaje es demasiado largo."
+            elif isinstance(error, ProviderUnavailable):
+                message = "Claude no está disponible ahora mismo."
+            else:
+                message = "La voz no está disponible ahora mismo."
+            await send("error", generation=turn, code=type(error).__name__, message=message)
         except Exception as error:
             speaker.cancel()
             await asyncio.gather(speaker, return_exceptions=True)
             logger.warning("Realtime voice turn failed (%s)", type(error).__name__)
-            await send("error", generation=turn, message="Gwen tuvo un problema temporal.")
+            if isinstance(error, DailyUsageLimitReached):
+                message = "Llegamos al límite diario de Claude configurado."
+            elif isinstance(error, InputTooLong):
+                message = "Ese mensaje es demasiado largo."
+            elif isinstance(error, ProviderUnavailable):
+                message = "Claude no está disponible ahora mismo."
+            else:
+                message = "La voz no está disponible ahora mismo."
+            await send("error", generation=turn, code=type(error).__name__, message=message)
 
     headers = {"xi-api-key": voice.api_key}
     async with connect(_STT_URL, additional_headers=headers, open_timeout=10) as stt:

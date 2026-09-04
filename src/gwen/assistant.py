@@ -99,13 +99,15 @@ class GwenAssistant:
             f"\n\nContexto anterior compactado:\n{summary_text}"
         )
         estimated_tokens = (len(system) + sum(len(item["content"]) for item in messages)) // 4
-        if used_tokens + estimated_tokens + 900 > self.daily_token_limit:
+        available_output_tokens = self.daily_token_limit - used_tokens - estimated_tokens
+        if available_output_tokens < 128:
             raise DailyUsageLimitReached
+        max_output_tokens = min(900, available_output_tokens)
 
         try:
             response = await self.client.messages.create(
                 model=self.model,
-                max_tokens=900,
+                max_tokens=max_output_tokens,
                 system=system,
                 messages=messages,  # type: ignore[arg-type]
             )
@@ -162,14 +164,16 @@ class GwenAssistant:
             f"\n\nContexto anterior compactado:\n{summary_text}"
         )
         estimated_tokens = (len(system) + sum(len(item["content"]) for item in messages)) // 4
-        if used_tokens + estimated_tokens + 900 > self.daily_token_limit:
+        available_output_tokens = self.daily_token_limit - used_tokens - estimated_tokens
+        if available_output_tokens < 128:
             raise DailyUsageLimitReached
+        max_output_tokens = min(900, available_output_tokens)
 
         chunks: list[str] = []
         try:
             async with self.client.messages.stream(
                 model=self.model,
-                max_tokens=900,
+                max_tokens=max_output_tokens,
                 system=system,
                 messages=messages,  # type: ignore[arg-type]
             ) as stream:
