@@ -91,7 +91,7 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
   TTS Flash a 22.05 kHz/32 kbps mientras la respuesta aún se genera.
 - El usuario puede interrumpir el audio de Gwen hablando; la grabación manual por HTTP
   permanece como respaldo.
-- Última validación conocida: 23 pruebas aprobadas, Ruff y JavaScript limpios.
+- Última validación conocida: 26 pruebas aprobadas, Ruff y JavaScript limpios.
 
 ## Incidente de seguridad resuelto
 

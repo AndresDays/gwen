@@ -58,6 +58,31 @@ web transmite PCM a Scribe Realtime, muestra la transcripción parcial, recibe l
 de Claude por fragmentos y comienza a reproducir voz Flash por frases antes de que termine
 la respuesta completa. Puedes interrumpir a Gwen hablando. La grabación manual se conserva
 como respaldo y las claves nunca llegan al navegador.
+## Acceso privado desde iPhone
+
+Gwen puede publicarse solo dentro de una red privada Tailscale, con HTTPS y sin abrir
+puertos del router ni usar Tailscale Funnel. En la PC y el iPhone debe estar instalada
+y conectada la app Tailscale con la misma cuenta. Luego, en la PC, ejecuta:
+
+```powershell
+.\setup-gwen-remote.ps1
+```
+
+El asistente pide una contraseña de al menos 12 caracteres sin mostrarla, guarda solo
+un hash Scrypt y un secreto de sesión en `.gwen-web-auth.json` (ignorado por Git),
+configura Tailscale Serve y reinicia la web. El modo remoto añade cookies Secure,
+HttpOnly y SameSite, validación de origen para HTTP/WebSocket, bloqueo tras cinco
+intentos fallidos en 15 minutos, allowlist de host, CSP, HSTS y respuestas sin caché.
+La aplicación falla cerrada si se intenta activar sin HTTPS o sin autenticación completa.
+
+Para retirar el acceso remoto, desactiva Tailscale Serve y elimina la configuración local:
+
+```powershell
+tailscale serve reset
+Remove-Item .gwen-web-auth.json
+.\stop-gwen-web.ps1
+.\start-gwen-web.ps1
+```
 ## Elegir la voz
 
 1. En ElevenLabs abre **Voices → Explore**.

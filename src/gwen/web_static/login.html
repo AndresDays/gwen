@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#071018">
+  <title>Acceso privado · Gwen</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-card">
+      <p class="eyebrow">CANAL PRIVADO</p>
+      <h1>Gwen</h1>
+      <p>Confirma tu contraseña para abrir esta sesión.</p>
+      <form action="/api/login" method="post" class="login-form">
+        <label for="password">Contraseña</label>
+        <input id="password" name="password" type="password" minlength="12" required autocomplete="current-password" autofocus>
+        <button type="submit">Entrar</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

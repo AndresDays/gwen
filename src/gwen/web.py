@@ -1,17 +1,27 @@
 import base64
 import logging
+from collections import defaultdict, deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from importlib.resources import files
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -22,6 +32,14 @@ from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailabl
 from gwen.main import configure_logging
 from gwen.realtime import run_realtime_voice
 from gwen.repository import Repository
+from gwen.security import (
+    COOKIE_NAME,
+    PrivateAccessMiddleware,
+    SecurityHeadersMiddleware,
+    create_session,
+    public_hostname,
+    verify_password,
+)
 from gwen.voice import ElevenLabsVoice
 
 logger = logging.getLogger(__name__)
@@ -69,6 +87,13 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     database = database or Database(settings.database_url)
+    if settings.web_remote_enabled and not (
+        settings.web_password_hash
+        and settings.web_session_secret
+        and settings.web_public_origin.startswith("https://")
+        and public_hostname(settings.web_public_origin)
+    ):
+        raise RuntimeError("El acceso remoto requiere contraseña, secreto de sesión y HTTPS.")
     assistant = assistant or GwenAssistant(
         settings.anthropic_api_key,
         settings.anthropic_model,
@@ -95,9 +120,61 @@ def create_app(
         await database.close()
 
     app = FastAPI(title="Gwen", docs_url=None, redoc_url=None, lifespan=lifespan)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
+    app.add_middleware(
+        PrivateAccessMiddleware,
+        enabled=settings.web_remote_enabled,
+        secret=settings.web_session_secret or "",
+        public_origin=settings.web_public_origin,
+    )
+    allowed_hosts = ["127.0.0.1", "localhost"]
+    if settings.web_remote_enabled:
+        allowed_hosts.append(public_hostname(settings.web_public_origin))
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+    app.add_middleware(SecurityHeadersMiddleware, hsts=settings.web_remote_enabled)
     static_dir = files("gwen").joinpath("web_static")
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    login_attempts: dict[str, deque[datetime]] = defaultdict(deque)
+
+    @app.get("/login", include_in_schema=False)
+    async def login_page() -> FileResponse:
+        return FileResponse(str(static_dir.joinpath("login.html")))
+
+    @app.post("/api/login", include_in_schema=False)
+    async def login(
+        request: Request, password: Annotated[str, Form(min_length=12)]
+    ) -> RedirectResponse:
+        if not settings.web_remote_enabled:
+            return RedirectResponse("/", status_code=303)
+        client = request.client.host if request.client else "unknown"
+        now = datetime.now(ZoneInfo("America/Guatemala"))
+        cutoff = now - timedelta(minutes=15)
+        attempts = login_attempts[client]
+        while attempts and attempts[0] < cutoff:
+            attempts.popleft()
+        if len(attempts) >= 5:
+            raise HTTPException(429, "Demasiados intentos. Espera 15 minutos.")
+        if not verify_password(password, settings.web_password_hash or ""):
+            attempts.append(now)
+            raise HTTPException(401, "Contraseña incorrecta.")
+        attempts.clear()
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(
+            COOKIE_NAME,
+            create_session(settings.web_session_secret or ""),
+            secure=True,
+            httponly=True,
+            samesite="strict",
+            max_age=2_592_000,
+            path="/",
+        )
+        return response
+
+    @app.post("/api/logout", include_in_schema=False)
+    async def logout() -> RedirectResponse:
+        response = RedirectResponse("/login", status_code=303)
+        response.delete_cookie(COOKIE_NAME, path="/", secure=True, httponly=True, samesite="strict")
+        return response
 
     @app.get("/", include_in_schema=False)
     async def home() -> FileResponse:

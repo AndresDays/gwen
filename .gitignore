@@ -14,4 +14,4 @@ htmlcov/
 dist/
 build/
 *.egg-info/
-
+.gwen-web-auth.json
