@@ -157,6 +157,13 @@ Hardware confirmado para la app nativa:
 - Xcode todavía no está instalado; el siguiente paso es instalar Xcode 26.3 o
   una versión posterior compatible desde Apple antes de generar la build.
 
+## Aplicación de escritorio y modo de programación
+
+Se priorizó esta fase antes de la app nativa del iPhone. Existen
+`start-gwen-desktop.ps1` e `install-gwen-desktop.ps1` para abrir la interfaz
+local en una ventana independiente de Edge y crear el acceso directo de Windows.
+Claude Code 2.1.223 está instalado, pero al último chequeo aún no estaba
+autenticado.
 ## Modo de programación futuro
 
 Diseñar un trabajador local restringido que reciba tareas autorizadas y ejecute
@@ -170,9 +177,9 @@ sin autorización explícita.
 
 1. Probar y refinar la interfaz web local con uso cotidiano.
 2. Definir autenticación y hosting solo si se desea acceso fuera de esta computadora.
-3. Recabar datos de iPhone/Mac/Xcode.
-4. Diseñar y construir el MVP nativo de voz continua.
-5. Después, trabajador local para Claude Code y monitor financiero.
+3. Instalar y probar la aplicación de escritorio de Windows.
+4. Autenticar Claude Code y construir el trabajador local restringido.
+5. Después, retomar el MVP nativo de iPhone y el monitor financiero.
 
 ## Preferencias de colaboración
 

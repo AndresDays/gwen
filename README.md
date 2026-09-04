@@ -58,6 +58,11 @@ web transmite PCM a Scribe Realtime, muestra la transcripción parcial, recibe l
 de Claude por fragmentos y comienza a reproducir voz Flash por frases antes de que termine
 la respuesta completa. Puedes interrumpir a Gwen hablando. La grabación manual se conserva
 como respaldo y las claves nunca llegan al navegador.
+## Aplicación de escritorio
+
+Ejecuta `install-gwen-desktop.ps1` una vez para crear el acceso directo **Gwen**
+en el escritorio de Windows. Al abrirlo, inicia la interfaz local y la muestra en
+una ventana independiente de Microsoft Edge, sin pestañas ni barra del navegador.
 ## Acceso privado desde iPhone
 
 Gwen puede publicarse solo dentro de una red privada Tailscale, con HTTPS y sin abrir
@@ -130,4 +135,3 @@ añadirán migraciones formales y cifrado de los datos almacenados.
 
 Consulta [docs/ROADMAP.md](docs/ROADMAP.md). Recordatorios, resúmenes y alertas
 proactivas están previstos, pero no se activan hasta definir horarios y fuentes.
-
