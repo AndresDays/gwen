@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
     elevenlabs_stt_model: str = "scribe_v1"
     history_limit: int = Field(default=20, ge=2, le=100)
+    max_input_chars: int = Field(default=12_000, ge=500, le=100_000)
+    daily_token_limit: int = Field(default=100_000, ge=1_000)
+    backup_retention_days: int = Field(default=14, ge=1, le=365)
+    daily_voice_seconds_limit: int = Field(default=900, ge=60)
+    daily_tts_character_limit: int = Field(default=20_000, ge=100)
 
     @property
     def voice_enabled(self) -> bool:

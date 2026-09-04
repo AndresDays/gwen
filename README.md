@@ -9,8 +9,11 @@ recuerdos únicamente cuando el usuario se lo pide.
 - Texto de Telegram → respuesta de texto.
 - Nota de voz → transcripción, respuesta de Claude y nota de voz.
 - Acceso restringido a un único Telegram user ID.
-- Historial reciente y recuerdos persistentes separados.
-- Comandos `/memories`, `/remember`, `/forget` y `/privacy`.
+- Historial reciente, compactación automática y recuerdos persistentes separados.
+- Memoria natural con “recuerda que…”, protegida contra secretos comunes.
+- Límite diario de tokens y respuestas seguras ante fallos temporales.
+- Backups consistentes de SQLite con retención configurable.
+- Comandos `/memories`, `/remember`, `/forget`, `/new` y `/privacy`.
 - SQLite para desarrollo y PostgreSQL mediante `DATABASE_URL` para producción.
 - Proveedores desacoplados para poder cambiar Claude o ElevenLabs después.
 
@@ -29,7 +32,7 @@ Copy-Item .env.example .env
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-python -m gwen
+.\start-gwen.ps1
 ```
 
 Para obtener tu Telegram user ID puedes escribirle a `@userinfobot`. Gwen
@@ -50,14 +53,26 @@ La voz es configuración, no código: cambiar el ID cambia la voz de Gwen.
 - `/remember <dato>`: guardar un recuerdo explícito.
 - `/memories`: consultar los recuerdos guardados.
 - `/forget <texto>`: borrar recuerdos coincidentes.
+- `/new`: borrar la conversación reciente sin borrar recuerdos.
+- `/usage`: consultar el consumo de tokens del día.
 - `/privacy`: explicar qué se almacena.
 
+## Operación local
+
+- `./start-gwen.ps1`: iniciar Gwen en segundo plano.
+- `./stop-gwen.ps1`: detener la instancia iniciada por el script.
+- `./backup-gwen.ps1`: crear un backup consistente dentro de `backups/`.
+
+Los backups locales se conservan durante 14 días por defecto. Ajusta
+`BACKUP_RETENTION_DAYS` si necesitas otra ventana. `DAILY_TOKEN_LIMIT` controla el
+tope diario de tokens, `DAILY_VOICE_SECONDS_LIMIT` y
+`DAILY_TTS_CHARACTER_LIMIT` limitan ElevenLabs, y `MAX_INPUT_CHARS` evita
+entradas excesivamente grandes.
 ## Seguridad
 
 Nunca confirmes credenciales, contraseñas, claves API ni datos bancarios como
-recuerdos. Los secretos viven exclusivamente en variables de entorno. Antes de
-un despliegue público se añadirán migraciones, copias de seguridad y cifrado de
-los datos almacenados.
+recuerdos. Los secretos viven exclusivamente en variables de entorno. Los backups locales ya están disponibles. Antes de un despliegue público todavía se
+añadirán migraciones formales y cifrado de los datos almacenados.
 
 ## Próximas fases
 

@@ -3,6 +3,9 @@
 __pycache__/
 *.py[cod]
 *.db
+*.log
+.gwen.pid
+backups/
 .pytest_cache/
 .ruff_cache/
 .coverage

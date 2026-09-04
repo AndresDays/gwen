@@ -1,8 +1,66 @@
-from gwen.assistant import current_context
+from datetime import UTC, datetime
+
+from gwen.assistant import SYSTEM_PROMPT, current_context
 
 
 def test_current_context_uses_guatemala_time() -> None:
-    context = current_context()
+    context = current_context(lambda: datetime(2026, 9, 4, 18, 30, tzinfo=UTC))
     assert "America/Guatemala" in context
-    assert "Fecha y hora actuales:" in context
+    assert "Fecha y hora actuales: 2026-09-04 12:30:00" in context
     assert "No adivines el año actual" in context
+
+
+def test_system_prompt_requests_natural_conversation() -> None:
+    assert "chatbot genérico" in SYSTEM_PROMPT
+    assert "humor moderado" in SYSTEM_PROMPT
+    assert "Evita títulos, listas" in SYSTEM_PROMPT
+    assert "No finjas experiencias" in SYSTEM_PROMPT
+
+
+async def _memory_repository():
+    from gwen.database import Database
+
+    database = Database("sqlite+aiosqlite:///:memory:")
+    await database.initialize()
+    return database
+
+
+async def test_assistant_stores_natural_memory_without_calling_provider() -> None:
+    from unittest.mock import AsyncMock
+
+    from gwen.assistant import GwenAssistant
+    from gwen.repository import Repository
+
+    database = await _memory_repository()
+    assistant = GwenAssistant("test-key", "test-model", 10)
+    assistant.client = AsyncMock()
+    async with database.session() as session:
+        repository = Repository(session)
+        answer = await assistant.reply(42, "recuerda que prefiero té", repository)
+        assert answer == "Lo recordaré."
+        assert [item.content for item in await repository.memories(42)] == ["prefiero té"]
+        assistant.client.messages.create.assert_not_awaited()
+    await database.close()
+
+
+async def test_assistant_enforces_daily_token_limit_before_provider_call() -> None:
+    from datetime import datetime
+    from unittest.mock import AsyncMock
+    from zoneinfo import ZoneInfo
+
+    import pytest
+
+    from gwen.assistant import GwenAssistant
+    from gwen.errors import DailyUsageLimitReached
+    from gwen.repository import Repository
+
+    database = await _memory_repository()
+    assistant = GwenAssistant("test-key", "test-model", 10, daily_token_limit=100)
+    assistant.client = AsyncMock()
+    async with database.session() as session:
+        repository = Repository(session)
+        await repository.add_usage(42, datetime.now(ZoneInfo("America/Guatemala")).date(), 100, 0)
+        with pytest.raises(DailyUsageLimitReached):
+            await assistant.reply(42, "hola", repository)
+        assistant.client.messages.create.assert_not_awaited()
+    await database.close()

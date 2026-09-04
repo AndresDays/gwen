@@ -5,7 +5,8 @@
 - Bot privado de Telegram.
 - Conversación bilingüe con Claude.
 - Entrada y salida de audio con ElevenLabs.
-- Historial reciente y recuerdos explícitos.
+- Historial reciente, compactación persistente y recuerdos explícitos o naturales.
+- Límites diarios, fallbacks de proveedores y backups locales de SQLite.
 - Contenedores para ejecución local y despliegue.
 
 ## Fase 2 — proactividad

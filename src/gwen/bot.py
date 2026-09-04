@@ -1,5 +1,7 @@
 import logging
+from datetime import datetime
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 import httpx
 from telegram import Update
@@ -7,6 +9,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from gwen.assistant import GwenAssistant
 from gwen.database import Database
+from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
+from gwen.memory import is_safe_memory
 from gwen.repository import Repository
 from gwen.voice import ElevenLabsVoice
 
@@ -21,17 +25,23 @@ class GwenBot:
         database: Database,
         assistant: GwenAssistant,
         voice: ElevenLabsVoice | None,
+        daily_voice_seconds_limit: int = 900,
+        daily_tts_character_limit: int = 20_000,
     ) -> None:
         self.allowed_user_id = allowed_user_id
         self.database = database
         self.assistant = assistant
         self.voice = voice
+        self.daily_voice_seconds_limit = daily_voice_seconds_limit
+        self.daily_tts_character_limit = daily_tts_character_limit
         self.application = Application.builder().token(token).build()
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("remember", self.remember))
         self.application.add_handler(CommandHandler("memories", self.memories))
         self.application.add_handler(CommandHandler("forget", self.forget))
         self.application.add_handler(CommandHandler("privacy", self.privacy))
+        self.application.add_handler(CommandHandler("new", self.new_conversation))
+        self.application.add_handler(CommandHandler("usage", self.usage))
         self.application.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
         self.application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text)
@@ -51,6 +61,11 @@ class GwenBot:
         content = " ".join(context.args).strip()
         if not content:
             await update.message.reply_text("Dime qué recordar: /remember <dato>")
+            return
+        if not is_safe_memory(content):
+            await update.message.reply_text(
+                "Eso parece información sensible, así que no la guardaré."
+            )
             return
         async with self.database.session() as session:
             await Repository(session).add_memory(self.allowed_user_id, content)
@@ -84,6 +99,34 @@ class GwenBot:
                 "contraseñas, tokens, claves API ni datos bancarios completos."
             )
 
+    async def new_conversation(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self.authorized(update) or not update.message:
+            return
+        async with self.database.session() as session:
+            await Repository(session).clear_messages(self.allowed_user_id)
+        await update.message.reply_text(
+            "Conversación nueva. Borré el contexto reciente, pero conservé tus recuerdos."
+        )
+
+    async def usage(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self.authorized(update) or not update.message:
+            return
+        today = datetime.now(ZoneInfo("America/Guatemala")).date()
+        async with self.database.session() as session:
+            used = await Repository(session).usage_tokens(self.allowed_user_id, today)
+        limit = self.assistant.daily_token_limit
+        await update.message.reply_text(f"Uso de hoy: {used:,} de {limit:,} tokens.")
+
+    async def assistant_answer(self, text: str, repository: Repository) -> str:
+        try:
+            return await self.assistant.reply(self.allowed_user_id, text, repository)
+        except InputTooLong:
+            return "Ese mensaje es demasiado largo. Divídelo en partes más pequeñas."
+        except DailyUsageLimitReached:
+            return "Llegamos al límite diario configurado. Podremos continuar mañana."
+        except ProviderUnavailable:
+            return "Claude no está disponible ahora mismo. Intenta de nuevo en unos minutos."
+
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self.authorized(update) or not update.message or not update.message.text:
             return
@@ -99,13 +142,41 @@ class GwenBot:
         if not self.voice:
             await update.message.reply_text("La voz todavía no está configurada.")
             return
-        voice_file = await context.bot.get_file(update.message.voice.file_id)
-        audio = bytes(await voice_file.download_as_bytearray())
-        transcript = await self.voice.transcribe(audio)
+        today = datetime.now(ZoneInfo("America/Guatemala")).date()
+        async with self.database.session() as session:
+            voice_seconds, tts_characters = await Repository(session).voice_usage(
+                self.allowed_user_id, today
+            )
+        duration = update.message.voice.duration or 0
+        if voice_seconds + duration > self.daily_voice_seconds_limit:
+            await update.message.reply_text(
+                "Llegamos al límite diario de transcripción de voz. Puedes seguir por texto."
+            )
+            return
+        try:
+            voice_file = await context.bot.get_file(update.message.voice.file_id)
+            audio = bytes(await voice_file.download_as_bytearray())
+            transcript = await self.voice.transcribe(audio)
+            async with self.database.session() as session:
+                await Repository(session).add_usage(
+                    self.allowed_user_id, today, voice_seconds=duration
+                )
+        except Exception as error:
+            logger.warning("Voice transcription failed (%s)", type(error).__name__)
+            await update.message.reply_text(
+                "No pude procesar ese audio. Intenta otra vez o escríbeme el mensaje."
+            )
+            return
         async with self.database.session() as session:
             answer = await self.assistant.reply(
                 self.allowed_user_id, transcript, Repository(session)
             )
+        if tts_characters + len(answer) > self.daily_tts_character_limit:
+            await update.message.reply_text(answer)
+            await update.message.reply_text(
+                "Llegamos al límite diario de voz; por hoy responderé por texto."
+            )
+            return
         try:
             audio_answer = await self.voice.synthesize(answer)
         except httpx.HTTPStatusError as error:
@@ -117,12 +188,24 @@ class GwenBot:
                     "a esta voz. Mientras tanto responderé por texto."
                 )
             return
+        except httpx.HTTPError as error:
+            logger.warning("Voice synthesis failed (%s)", type(error).__name__)
+            await update.message.reply_text(answer)
+            await update.message.reply_text(
+                "No pude generar el audio esta vez, así que respondí por texto."
+            )
+            return
+        async with self.database.session() as session:
+            await Repository(session).add_usage(
+                self.allowed_user_id, today, tts_characters=len(answer)
+            )
         output = BytesIO(audio_answer)
         output.name = "gwen.mp3"
         await update.message.reply_voice(voice=output)
 
     async def on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-        logger.exception("Unhandled Telegram update", exc_info=context.error)
+        error_name = type(context.error).__name__ if context.error else "UnknownError"
+        logger.error("Unhandled Telegram update (%s)", error_name)
 
     def run(self) -> None:
         self.application.run_polling(allowed_updates=Update.ALL_TYPES)

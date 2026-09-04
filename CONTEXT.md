@@ -41,7 +41,7 @@ no duplicar funciones que ChatGPT ya ofrece:
 
 ## Ubicación y estructura
 
-Ruta del proyecto: `C:\Programacion\gwen`.
+Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
 
 - `src/gwen/assistant.py`: prompt, contexto temporal y llamadas a Claude.
 - `src/gwen/bot.py`: handlers de Telegram y fallback de audio.
@@ -58,7 +58,8 @@ Ruta del proyecto: `C:\Programacion\gwen`.
 - Telegram, Anthropic y ElevenLabs fueron validados correctamente.
 - El bot público es `@GwenPersonalAssistantBot`.
 - Conversación escrita funciona.
-- `/remember`, `/memories`, `/forget`, `/privacy` y `/start` existen.
+- `/remember`, `/memories`, `/forget`, `/privacy`, `/new` y `/start` existen.
+- `/new` borra solo el historial reciente del usuario y conserva sus recuerdos.
 - La nota de voz se descarga y transcribe correctamente.
 - La primera voz seleccionada era de Voice Library y devolvía HTTP 402 en el
   plan gratuito. El usuario creó una voz con Voice Design, cambió su Voice ID y
@@ -67,7 +68,18 @@ Ruta del proyecto: `C:\Programacion\gwen`.
   calcular 20 años para una persona nacida el 4 de abril de 2004 en 2026.
 - Si TTS devuelve HTTP 402, Gwen responde por texto y explica que falta acceso o
   saldo, en lugar de quedarse silenciosa.
-- Última validación conocida: 3 pruebas aprobadas y Ruff limpio.
+- `tzdata` ya está declarado como dependencia.
+- El logging seguro de `httpx` y `httpcore` ya es permanente.
+- Existen `start-gwen.ps1` y `stop-gwen.ps1` con manejo de PID.
+- Se refinó el prompt para una conversación más natural, menos estructurada y
+  con humor moderado únicamente cuando encaje.
+- La memoria natural reconoce “recuerda que…” y rechaza posibles secretos.
+- El historial se compacta localmente en un resumen persistente sin otra llamada al LLM.
+- Hay límites diarios configurables para tokens de Claude, segundos de STT y
+  caracteres de TTS, consultables con `/usage`.
+- Los fallos y rate limits se convierten en mensajes seguros sin filtrar detalles.
+- `backup-gwen.ps1` crea backups consistentes de SQLite con retención configurable.
+- Última validación conocida: 15 pruebas aprobadas y Ruff limpio.
 
 ## Incidente de seguridad resuelto
 
@@ -83,25 +95,22 @@ Set-Location C:\Programacion\gwen
 .\.venv\Scripts\python.exe -c "import logging; logging.getLogger('httpx').setLevel(logging.WARNING); logging.getLogger('httpcore').setLevel(logging.WARNING); from gwen.main import run; run()"
 ```
 
-Pendiente prioritario: hacer permanente esa configuración en `main.py` y crear
-scripts seguros `start-gwen.ps1` y `stop-gwen.ps1`. Antes de leer un log,
+La configuración ya es permanente en `main.py` y existen scripts seguros
+`start-gwen.ps1` y `stop-gwen.ps1`. Antes de leer un log,
 comprobar que no contiene un patrón de token de Telegram y nunca mostrar URLs
 autenticadas.
 
 ## Deuda técnica conocida
 
-- `tzdata` se instaló manualmente en `.venv` porque Windows no incluía la zona
-  IANA `America/Guatemala`; debe añadirse a `pyproject.toml` para instalaciones
-  reproducibles.
+- `tzdata` está declarado en `pyproject.toml` para instalaciones reproducibles.
 - El proyecto fue movido después de crear `.venv`; se reinstaló editable en la
   ruta nueva y funciona.
 - Git está inicializado, pero todavía no existe el primer commit.
-- El historial se incluye en cada llamada; falta resumen/compactación y un
-  comando `/new` que borre conversación reciente sin borrar recuerdos.
-- La extracción de memoria natural todavía depende de `/remember`; falta
-  permitir frases como “recuerda que...” de forma segura.
-- Faltan migraciones, backup, cifrado, límites de costos y manejo amplio de
-  errores/rate limits.
+- El historial reciente se compacta automáticamente y `/new` permite borrarlo sin
+  borrar recuerdos.
+- La memoria natural y `/remember` rechazan patrones comunes de secretos; esta
+  protección es preventiva y no sustituye el cuidado del usuario.
+- Faltan migraciones formales, cifrado y backups externos/off-site.
 - El proceso local solo funciona mientras la computadora está encendida.
 
 ## App nativa iPhone — dirección acordada
@@ -136,14 +145,11 @@ sin autorización explícita.
 
 ## Próximos pasos recomendados
 
-1. Añadir `tzdata` a dependencias y hacer permanente el logging seguro.
-2. Crear scripts de inicio/detención y probarlos sin exponer secretos.
-3. Agregar `/new` y pruebas del fallback de audio y fecha con reloj inyectable.
-4. Hacer el primer commit después de revisar que `.env` y `gwen.db` no estén
+1. Hacer el primer commit; ya se confirmó que `.env`, `gwen.db` y logs no están
    versionados.
-5. Recabar datos de iPhone/Mac/Xcode.
-6. Diseñar y construir el MVP nativo de voz continua.
-7. Después, trabajador local para Claude Code y monitor financiero.
+2. Recabar datos de iPhone/Mac/Xcode.
+3. Diseñar y construir el MVP nativo de voz continua.
+4. Después, trabajador local para Claude Code y monitor financiero.
 
 ## Preferencias de colaboración
 
