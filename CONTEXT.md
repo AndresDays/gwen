@@ -181,7 +181,11 @@ permanecer encendida.
 El chat escrito normal también enruta órdenes explícitas de proyectos hacia
 Claude Code. Antes solo lo hacía la escucha continua, por lo que el Claude
 conversacional podía inventar etiquetas `<read_file>` y rutas antiguas sin
-modificar nada. Ahora texto y voz comparten detección, plan y confirmación.
+modificar nada. Ahora texto y voz comparten detección, plan y confirmación. Los planes y la salida técnica de Claude se mantienen internos: Gwen solo pide
+confirmación en lenguaje natural, avisa “sí, ya lo hago” al comenzar por voz y
+al finalizar informa si quedó hecho, pasaron las pruebas y se creó el commit.
+Las inspecciones también evitan volcar código fuente salvo una petición futura
+explícita que cambie esta política.
 ## Próximos pasos recomendados
 
 1. Probar y refinar la interfaz web local con uso cotidiano.

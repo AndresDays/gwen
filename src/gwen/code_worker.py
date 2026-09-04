@@ -130,7 +130,10 @@ class ClaudeCodeWorker:
                 "Implementa la tarea solicitada con cambios mínimos y explica lo realizado."
             )
         elif inspection:
-            guardrail += "No modifiques archivos. Inspecciona y responde directamente la pregunta."
+            guardrail += (
+                "No modifiques archivos. Responde brevemente en lenguaje natural, "
+                "sin mostrar bloques ni volcar código fuente."
+            )
         else:
             guardrail += (
                 "No modifiques archivos. Devuelve un plan breve, riesgos y archivos afectados."

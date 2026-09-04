@@ -312,11 +312,11 @@ def create_app(
                     task.workspace_id, task.task, commit=confirmation[1]
                 )
                 status = (
-                    "Las pruebas pasaron y creé el commit."
+                    "Listo, ya está hecho y también creé el commit."
                     if result["committed"]
-                    else "Terminé los cambios y las pruebas pasaron, sin crear commit."
+                    else "Listo, ya está hecho. Las pruebas pasaron correctamente."
                 )
-                return ChatResponse(answer=f"{result['answer']}\n\n{status}")
+                return ChatResponse(answer=status)
             if code_worker is not None:
                 code_request = detect_code_request(message)
                 if code_request is not None:
@@ -326,10 +326,11 @@ def create_app(
                         return ChatResponse(answer=f"Sí, puedo revisar {workspace_id}. {answer}")
                     plan = await code_worker.plan(workspace_id, task)
                     pending_text_code = PendingCodeTask(workspace_id, task, plan)
+                    project = "California" if workspace_id == "california" else "Gwen"
                     return ChatResponse(
                         answer=(
-                            f"Este es el plan para {workspace_id}: {plan}\n\n"
-                            "¿Quieres que lo ejecute? También puedes escribir: "
+                            f"Sí, ya revisé lo necesario en {project} y puedo hacerlo. "
+                            "¿Confirmas que lo ejecute? También puedes decir: "
                             "sí, y haz commit."
                         )
                     )

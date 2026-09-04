@@ -246,9 +246,11 @@ def test_normal_chat_routes_explicit_code_requests_to_worker() -> None:
                 )
             },
         )
-        assert "Cambiar la importación" in plan.json()["answer"]
+        assert "¿Confirmas que lo ejecute?" in plan.json()["answer"]
+        assert "Cambiar la importación" not in plan.json()["answer"]
         execute = client.post("/api/chat", json={"message": "sí, ejecútalo"})
-        assert "Logo actualizado" in execute.json()["answer"]
+        assert "Listo, ya está hecho" in execute.json()["answer"]
+        assert "Logo actualizado" not in execute.json()["answer"]
         inspect = client.post("/api/chat", json={"message": "¿Puedes ver el código de California?"})
         assert "El login usa otro logo" in inspect.json()["answer"]
     assistant.reply.assert_not_awaited()

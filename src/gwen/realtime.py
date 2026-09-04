@@ -112,15 +112,17 @@ async def run_realtime_voice(
                 else:
                     task = pending_code
                     pending_code = None
+                    acknowledgement = "Sí, ya lo hago."
+                    await send("answer_delta", generation=turn, text=acknowledgement + " ")
+                    await queue.put(acknowledgement)
                     result = await code_worker.execute(
                         task.workspace_id, task.task, commit=confirmation[1]
                     )
-                    status = (
-                        "Las pruebas pasaron y creé el commit."
+                    code_answer = (
+                        "Listo, ya está hecho y también creé el commit."
                         if result["committed"]
-                        else "Terminé los cambios y las pruebas pasaron, sin crear commit."
+                        else "Listo, ya está hecho. Las pruebas pasaron correctamente."
                     )
-                    code_answer = f"{result['answer']}\n\n{status}"
             elif code_worker is not None:
                 request = detect_code_request(transcript)
                 if request is not None:
@@ -131,9 +133,11 @@ async def run_realtime_voice(
                     else:
                         plan = await code_worker.plan(workspace_id, task)
                         pending_code = PendingCodeTask(workspace_id, task, plan)
+                        project = "California" if workspace_id == "california" else "Gwen"
                         code_answer = (
-                            f"Este es el plan para {workspace_id}: {plan}\n\n"
-                            "¿Quieres que lo ejecute? También puedes decir: sí, y haz commit."
+                            f"Sí, ya revisé lo necesario en {project} y puedo hacerlo. "
+                            "¿Confirmas que lo ejecute? También puedes decir: "
+                            "sí, y haz commit."
                         )
             if code_answer is not None:
                 await send("answer_delta", generation=turn, text=code_answer)
