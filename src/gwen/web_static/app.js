@@ -34,6 +34,7 @@ function addMessage(role, content) {
   article.append(label, body);
   messages.append(article);
   conversation.scrollTo({ top: conversation.scrollHeight, behavior: 'smooth' });
+  return body;
 }
 
 function setBusy(busy) {
@@ -124,18 +125,24 @@ document.querySelector('#closeUsage').addEventListener('click', () => usageDialo
 micButton.addEventListener('click', async () => {
   if (recorder?.state === 'recording') { recorder.stop(); return; }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    chunks = []; startedAt = Date.now(); recorder = new MediaRecorder(stream);
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    chunks = []; startedAt = Date.now();
+    const preferredTypes = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    const mimeType = preferredTypes.find(type => MediaRecorder.isTypeSupported(type));
+    recorder = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 128000 } : undefined);
     recorder.addEventListener('dataavailable', event => chunks.push(event.data));
     recorder.addEventListener('stop', async () => {
       stream.getTracks().forEach(track => track.stop());
       clearInterval(timer); recordingStatus.hidden = true; micButton.classList.remove('recording');
       const duration = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
       const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-      const form = new FormData(); form.append('audio', blob, 'voice.webm'); form.append('duration', String(duration));
-      addMessage('user', '🎙️ Mensaje de voz'); setBusy(true);
+      if (blob.size < 1000) { showToast('La grabación quedó vacía. Mantén pulsado un poco más.'); return; }
+      const extension = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('mp4') ? 'm4a' : 'webm';
+      const form = new FormData(); form.append('audio', blob, `voice.${extension}`); form.append('duration', String(duration));
+      const voiceMessage = addMessage('user', '🎙️ Procesando tu voz…'); setBusy(true);
       try {
         const result = await request('/api/voice', { method: 'POST', body: form });
+        voiceMessage.textContent = result.transcript ? `🎙️ ${result.transcript}` : '🎙️ Mensaje de voz';
         addMessage('assistant', result.answer);
         if (result.audio) new Audio(`data:${result.audio_type};base64,${result.audio}`).play().catch(() => {});
       } catch (error) { showToast(error.message); }

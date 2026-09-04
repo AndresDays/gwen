@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from gwen.config import Settings
 from gwen.database import Database
-from gwen.web import create_app
+from gwen.web import create_app, meaningful_transcript, normalized_audio_type
 
 
 def test_web_interface_serves_private_chat_and_state() -> None:
@@ -26,12 +26,13 @@ def test_web_interface_serves_private_chat_and_state() -> None:
     with TestClient(app, base_url="http://localhost") as client:
         home = client.get("/")
         assert home.status_code == 200
-        assert "Tu espacio privado" in home.text
+        assert "CANAL PRIVADO ESTABLECIDO" in home.text
 
         response = client.post("/api/chat", json={"message": "hola"})
         assert response.status_code == 200
         assert response.json() == {
             "answer": "Hola desde Gwen.",
+            "transcript": None,
             "audio": None,
             "audio_type": None,
         }
@@ -86,5 +87,44 @@ def test_web_voice_rejects_empty_transcript_without_calling_claude() -> None:
         )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "No entendí el audio, intenta de nuevo."
+    assert "No detecté palabras claras" in response.json()["detail"]
     assistant.reply.assert_not_awaited()
+
+
+def test_audio_helpers_normalize_browser_mime_and_reject_silence() -> None:
+    assert normalized_audio_type("audio/webm;codecs=opus") == "audio/webm"
+    assert normalized_audio_type("application/octet-stream") == "audio/webm"
+    assert meaningful_transcript("Hola Gwen")
+    assert not meaningful_transcript("(silence)")
+
+
+def test_voice_endpoint_preserves_mime_and_returns_transcript() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    database = Database(settings.database_url)
+    assistant = SimpleNamespace(
+        reply=AsyncMock(return_value="Te escuché."),
+        daily_token_limit=settings.daily_token_limit,
+    )
+    voice = SimpleNamespace(
+        transcribe=AsyncMock(return_value="Hola Gwen"),
+        synthesize=AsyncMock(return_value=b"mp3"),
+    )
+    app = create_app(settings=settings, database=database, assistant=assistant, voice=voice)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        response = client.post(
+            "/api/voice",
+            files={"audio": ("voice.webm", b"webm-audio", "audio/webm;codecs=opus")},
+            data={"duration": "2"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["transcript"] == "Hola Gwen"
+    assert response.json()["answer"] == "Te escuché."
+    assert voice.transcribe.await_args.args[2] == "audio/webm"

@@ -53,8 +53,8 @@ Luego abre `http://127.0.0.1:8765`. Para detenerla:
 .\stop-gwen-web.ps1
 ```
 
-Permite escribir, grabar desde el micrófono, escuchar la respuesta, iniciar una
-conversación nueva y consultar el consumo diario. Las claves nunca llegan al navegador.
+Permite escribir, grabar desde el micrófono, revisar la transcripción detectada,
+escuchar la respuesta, iniciar una conversación nueva y consultar el consumo diario. Las claves nunca llegan al navegador.
 ## Elegir la voz
 
 1. En ElevenLabs abre **Voices → Explore**.

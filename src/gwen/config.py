@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str | None = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
     elevenlabs_stt_model: str = "scribe_v1"
+    elevenlabs_web_stt_model: str = "scribe_v2"
     history_limit: int = Field(default=20, ge=2, le=100)
     max_input_chars: int = Field(default=12_000, ge=500, le=100_000)
     daily_token_limit: int = Field(default=100_000, ge=1_000)

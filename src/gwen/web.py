@@ -33,8 +33,20 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
+    transcript: str | None = None
     audio: str | None = None
     audio_type: str | None = None
+
+
+def normalized_audio_type(content_type: str | None) -> str:
+    value = (content_type or "audio/webm").split(";", 1)[0].strip().lower()
+    return value if value.startswith("audio/") else "audio/webm"
+
+
+def meaningful_transcript(text: str) -> bool:
+    normalized = text.strip().lower()
+    ignored = {"", "...", "[silence]", "(silence)", "[music]", "(music)"}
+    return normalized not in ignored and any(character.isalnum() for character in normalized)
 
 
 def safe_error(error: Exception) -> HTTPException:
@@ -68,7 +80,7 @@ def create_app(
             settings.elevenlabs_api_key or "",
             settings.elevenlabs_voice_id or "",
             settings.elevenlabs_tts_model,
-            settings.elevenlabs_stt_model,
+            settings.elevenlabs_web_stt_model,
         )
 
     @asynccontextmanager
@@ -151,13 +163,16 @@ def create_app(
                 transcript = await voice.transcribe(
                     content,
                     audio.filename or "voice.webm",
-                    audio.content_type or "audio/webm",
+                    normalized_audio_type(audio.content_type),
                 )
+                if not meaningful_transcript(transcript):
+                    raise HTTPException(
+                        422,
+                        "No detecté palabras claras. Acércate al micrófono y vuelve a intentarlo.",
+                    )
                 await repository.add_usage(
                     settings.telegram_allowed_user_id, today, voice_seconds=duration
                 )
-                if not transcript:
-                    raise HTTPException(422, "No entendí el audio, intenta de nuevo.")
                 answer = await assistant.reply(
                     settings.telegram_allowed_user_id, transcript, repository
                 )
@@ -171,6 +186,7 @@ def create_app(
                 )
             return ChatResponse(
                 answer=answer,
+                transcript=transcript,
                 audio=base64.b64encode(spoken).decode("ascii"),
                 audio_type="audio/mpeg",
             )

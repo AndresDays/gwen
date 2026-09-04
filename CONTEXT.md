@@ -82,7 +82,10 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
 - Existe una interfaz web privada en `http://127.0.0.1:8765`, con texto, grabación
   de voz, reproducción de TTS, historial compartido, `/new` visual y consumo.
 - Se inicia y detiene con `start-gwen-web.ps1` y `stop-gwen-web.ps1`.
-- Última validación conocida: 17 pruebas aprobadas y Ruff limpio.
+- El audio web usa Scribe v2, MIME normalizado, captura con reducción de ruido y
+  muestra la transcripción detectada antes de la respuesta.
+- La interfaz web tiene un diseño futurista responsive sin recursos remotos.
+- Última validación conocida: 20 pruebas aprobadas y Ruff limpio.
 
 ## Incidente de seguridad resuelto
 
