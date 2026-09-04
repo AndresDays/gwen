@@ -202,3 +202,54 @@ def test_code_endpoints_use_only_the_injected_local_worker() -> None:
     assert execute.json()["committed"] is True
     worker.plan.assert_awaited_once_with("gwen", "Planifica")
     worker.execute.assert_awaited_once_with("gwen", "Implementa", True)
+
+
+def test_normal_chat_routes_explicit_code_requests_to_worker() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    assistant = SimpleNamespace(
+        reply=AsyncMock(return_value="No debería usarse"),
+        daily_token_limit=100_000,
+    )
+    worker = SimpleNamespace(
+        public_workspaces=lambda: [{"id": "california", "label": "californIA"}],
+        plan=AsyncMock(return_value="Cambiar la importación del logo."),
+        inspect=AsyncMock(return_value="El login usa otro logo."),
+        execute=AsyncMock(
+            return_value={
+                "answer": "Logo actualizado.",
+                "checks": ["npm test"],
+                "committed": False,
+                "diff": "",
+            }
+        ),
+    )
+    app = create_app(
+        settings=settings,
+        database=Database(settings.database_url),
+        assistant=assistant,
+        voice=None,
+        code_worker=worker,
+    )
+    with TestClient(app, base_url="http://localhost") as client:
+        plan = client.post(
+            "/api/chat",
+            json={
+                "message": (
+                    "Gwen, en el proyecto California cambia el logo del login "
+                    "por logoCDC.jpg que está en assets"
+                )
+            },
+        )
+        assert "Cambiar la importación" in plan.json()["answer"]
+        execute = client.post("/api/chat", json={"message": "sí, ejecútalo"})
+        assert "Logo actualizado" in execute.json()["answer"]
+        inspect = client.post("/api/chat", json={"message": "¿Puedes ver el código de California?"})
+        assert "El login usa otro logo" in inspect.json()["answer"]
+    assistant.reply.assert_not_awaited()
+    worker.execute.assert_awaited_once()

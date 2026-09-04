@@ -93,7 +93,7 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
   permanece como respaldo.
 - La web es una PWA instalable en iPhone; solo cachea recursos estáticos públicos. Mide
   latencia por etapa localmente y reconecta WebSocket con backoff al recuperar red o foco.
-- Última validación conocida: 32 pruebas aprobadas, Ruff y JavaScript limpios.
+- Última validación conocida: 33 pruebas aprobadas, Ruff y JavaScript limpios.
 
 ## Incidente de seguridad resuelto
 
@@ -178,6 +178,10 @@ ambiguas no activan programación. Preguntas explícitas como “¿puedes ver o 
 el código de California?” usan Claude Code en modo de solo lectura y responden
 directamente, sin crear un plan de ejecución ni pedir confirmación. La PC debe
 permanecer encendida.
+El chat escrito normal también enruta órdenes explícitas de proyectos hacia
+Claude Code. Antes solo lo hacía la escucha continua, por lo que el Claude
+conversacional podía inventar etiquetas `<read_file>` y rutas antiguas sin
+modificar nada. Ahora texto y voz comparten detección, plan y confirmación.
 ## Próximos pasos recomendados
 
 1. Probar y refinar la interfaz web local con uso cotidiano.

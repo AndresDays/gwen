@@ -27,6 +27,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from gwen.assistant import GwenAssistant
+from gwen.code_voice import (
+    PendingCodeTask,
+    code_confirmation,
+    code_request_is_read_only,
+    detect_code_request,
+)
 from gwen.code_worker import ClaudeCodeWorker
 from gwen.config import Settings, get_settings
 from gwen.database import Database
@@ -74,6 +80,7 @@ class CodeExecutionResponse(BaseModel):
     checks: list[str]
     committed: bool
     diff: str
+
 
 def normalized_audio_type(content_type: str | None) -> str:
     value = (content_type or "audio/webm").split(";", 1)[0].strip().lower()
@@ -157,6 +164,7 @@ def create_app(
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     login_attempts: dict[str, deque[datetime]] = defaultdict(deque)
+    pending_text_code: PendingCodeTask | None = None
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
     async def manifest() -> FileResponse:
@@ -268,9 +276,7 @@ def create_app(
             raise HTTPException(503, "Claude Code no pudo preparar el plan.") from None
 
     @app.post("/api/code/execute", response_model=CodeExecutionResponse)
-    async def code_execute(
-        request: Request, payload: CodeTaskRequest
-    ) -> CodeExecutionResponse:
+    async def code_execute(request: Request, payload: CodeTaskRequest) -> CodeExecutionResponse:
         worker = local_code_worker(request)
         try:
             result = await worker.execute(payload.workspace_id, payload.task, payload.commit)
@@ -282,21 +288,68 @@ def create_app(
             raise HTTPException(
                 409, "Claude Code no pudo ejecutar la tarea de forma segura."
             ) from None
+
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(payload: ChatRequest) -> ChatResponse:
+        nonlocal pending_text_code
+        message = payload.message.strip()
         try:
+            if code_worker is not None and pending_text_code is not None:
+                confirmation = code_confirmation(message)
+                if confirmation is None:
+                    return ChatResponse(
+                        answer=(
+                            "Tengo un plan pendiente. Escribe ‘sí, ejecútalo’, "
+                            "‘sí, y haz commit’ o ‘cancela’."
+                        )
+                    )
+                if not confirmation[0]:
+                    pending_text_code = None
+                    return ChatResponse(answer="Entendido. Cancelé la tarea de programación.")
+                task = pending_text_code
+                pending_text_code = None
+                result = await code_worker.execute(
+                    task.workspace_id, task.task, commit=confirmation[1]
+                )
+                status = (
+                    "Las pruebas pasaron y creé el commit."
+                    if result["committed"]
+                    else "Terminé los cambios y las pruebas pasaron, sin crear commit."
+                )
+                return ChatResponse(answer=f"{result['answer']}\n\n{status}")
+            if code_worker is not None:
+                code_request = detect_code_request(message)
+                if code_request is not None:
+                    workspace_id, task = code_request
+                    if code_request_is_read_only(task):
+                        answer = await code_worker.inspect(workspace_id, task)
+                        return ChatResponse(answer=f"Sí, puedo revisar {workspace_id}. {answer}")
+                    plan = await code_worker.plan(workspace_id, task)
+                    pending_text_code = PendingCodeTask(workspace_id, task, plan)
+                    return ChatResponse(
+                        answer=(
+                            f"Este es el plan para {workspace_id}: {plan}\n\n"
+                            "¿Quieres que lo ejecute? También puedes escribir: "
+                            "sí, y haz commit."
+                        )
+                    )
             async with database.session() as session:
                 answer = await assistant.reply(
-                    settings.telegram_allowed_user_id,
-                    payload.message.strip(),
-                    Repository(session),
+                    settings.telegram_allowed_user_id, message, Repository(session)
                 )
             return ChatResponse(answer=answer)
         except Exception as error:
+            is_code_request = pending_text_code is not None or detect_code_request(message)
+            if code_worker is not None and is_code_request:
+                logger.warning("Text code request failed (%s)", type(error).__name__)
+                pending_text_code = None
+                raise HTTPException(409, "Claude Code no pudo completar la tarea.") from None
             raise safe_error(error) from None
 
     @app.post("/api/new", status_code=204)
     async def new_conversation() -> None:
+        nonlocal pending_text_code
+        pending_text_code = None
         async with database.session() as session:
             await Repository(session).clear_messages(settings.telegram_allowed_user_id)
 
