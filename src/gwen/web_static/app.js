@@ -116,10 +116,15 @@ document.querySelector('#usageButton').addEventListener('click', async () => {
       const row = document.createElement('div'); row.className = 'usage-row';
       const head = document.createElement('div');
       const title = document.createElement('span'); title.textContent = name;
-      const amount = document.createElement('span'); amount.textContent = `${value.toLocaleString()} / ${limit.toLocaleString()} ${unit}`;
+      const amount = document.createElement('span');
+      amount.textContent = limit == null
+        ? `${value.toLocaleString()} ${unit} · sin límite`
+        : `${value.toLocaleString()} / ${limit.toLocaleString()} ${unit}`;
       head.append(title, amount);
       const bar = document.createElement('div'); bar.className = 'bar';
-      const fill = document.createElement('span'); fill.style.width = `${Math.min(100, value / limit * 100)}%`;
+      const fill = document.createElement('span');
+      fill.style.width = limit == null ? '100%' : `${Math.min(100, value / limit * 100)}%`;
+      if (limit == null) fill.style.opacity = '.28';
       bar.append(fill); row.append(head, bar); return row;
     }));
     usageDialog.showModal();

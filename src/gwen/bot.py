@@ -114,8 +114,12 @@ class GwenBot:
         today = datetime.now(ZoneInfo("America/Guatemala")).date()
         async with self.database.session() as session:
             used = await Repository(session).usage_tokens(self.allowed_user_id, today)
-        limit = self.assistant.daily_token_limit
-        await update.message.reply_text(f"Uso de hoy: {used:,} de {limit:,} tokens.")
+        if self.assistant.daily_token_limit_enabled:
+            limit = self.assistant.daily_token_limit
+            message = f"Uso de hoy: {used:,} de {limit:,} tokens."
+        else:
+            message = f"Uso de hoy: {used:,} tokens. Límite diario desactivado."
+        await update.message.reply_text(message)
 
     async def assistant_answer(self, text: str, repository: Repository) -> str:
         try:

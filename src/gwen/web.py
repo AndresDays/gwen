@@ -75,6 +75,7 @@ def create_app(
         settings.history_limit,
         settings.max_input_chars,
         settings.daily_token_limit,
+        settings.daily_token_limit_enabled,
     )
     if voice is None and settings.voice_enabled:
         voice = ElevenLabsVoice(
@@ -118,7 +119,9 @@ def create_app(
             "messages": [{"role": item.role, "content": item.content} for item in messages],
             "usage": {
                 "tokens": tokens,
-                "token_limit": settings.daily_token_limit,
+                "token_limit": (
+                    settings.daily_token_limit if settings.daily_token_limit_enabled else None
+                ),
                 "voice_seconds": voice_seconds,
                 "voice_seconds_limit": settings.daily_voice_seconds_limit,
                 "tts_characters": tts_characters,

@@ -60,12 +60,14 @@ class GwenAssistant:
         history_limit: int,
         max_input_chars: int = 12_000,
         daily_token_limit: int = 100_000,
+        daily_token_limit_enabled: bool = True,
     ) -> None:
         self.client = AsyncAnthropic(api_key=api_key, max_retries=2, timeout=60.0)
         self.model = model
         self.history_limit = history_limit
         self.max_input_chars = max_input_chars
         self.daily_token_limit = daily_token_limit
+        self.daily_token_limit_enabled = daily_token_limit_enabled
 
     async def reply(self, user_id: int, text: str, repository: Repository) -> str:
         if len(text) > self.max_input_chars:
@@ -84,7 +86,7 @@ class GwenAssistant:
         zone = ZoneInfo("America/Guatemala")
         today = datetime.now(zone).date()
         used_tokens = await repository.usage_tokens(user_id, today)
-        if used_tokens >= self.daily_token_limit:
+        if self.daily_token_limit_enabled and used_tokens >= self.daily_token_limit:
             raise DailyUsageLimitReached
 
         memories = await repository.memories(user_id)
@@ -99,10 +101,12 @@ class GwenAssistant:
             f"\n\nContexto anterior compactado:\n{summary_text}"
         )
         estimated_tokens = (len(system) + sum(len(item["content"]) for item in messages)) // 4
-        available_output_tokens = self.daily_token_limit - used_tokens - estimated_tokens
-        if available_output_tokens < 128:
-            raise DailyUsageLimitReached
-        max_output_tokens = min(900, available_output_tokens)
+        max_output_tokens = 900
+        if self.daily_token_limit_enabled:
+            available_output_tokens = self.daily_token_limit - used_tokens - estimated_tokens
+            if available_output_tokens < 128:
+                raise DailyUsageLimitReached
+            max_output_tokens = min(max_output_tokens, available_output_tokens)
 
         try:
             response = await self.client.messages.create(
@@ -149,7 +153,7 @@ class GwenAssistant:
         zone = ZoneInfo("America/Guatemala")
         today = datetime.now(zone).date()
         used_tokens = await repository.usage_tokens(user_id, today)
-        if used_tokens >= self.daily_token_limit:
+        if self.daily_token_limit_enabled and used_tokens >= self.daily_token_limit:
             raise DailyUsageLimitReached
 
         memories = await repository.memories(user_id)
@@ -164,10 +168,12 @@ class GwenAssistant:
             f"\n\nContexto anterior compactado:\n{summary_text}"
         )
         estimated_tokens = (len(system) + sum(len(item["content"]) for item in messages)) // 4
-        available_output_tokens = self.daily_token_limit - used_tokens - estimated_tokens
-        if available_output_tokens < 128:
-            raise DailyUsageLimitReached
-        max_output_tokens = min(900, available_output_tokens)
+        max_output_tokens = 900
+        if self.daily_token_limit_enabled:
+            available_output_tokens = self.daily_token_limit - used_tokens - estimated_tokens
+            if available_output_tokens < 128:
+                raise DailyUsageLimitReached
+            max_output_tokens = min(max_output_tokens, available_output_tokens)
 
         chunks: list[str] = []
         try:

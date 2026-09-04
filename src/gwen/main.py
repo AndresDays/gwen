@@ -29,6 +29,7 @@ def run() -> None:
         settings.history_limit,
         settings.max_input_chars,
         settings.daily_token_limit,
+        settings.daily_token_limit_enabled,
     )
     voice = None
     if settings.voice_enabled:

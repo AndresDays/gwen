@@ -75,8 +75,7 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
   con humor moderado únicamente cuando encaje.
 - La memoria natural reconoce “recuerda que…” y rechaza posibles secretos.
 - El historial se compacta localmente en un resumen persistente sin otra llamada al LLM.
-- Hay límites diarios configurables para tokens de Claude, segundos de STT y
-  caracteres de TTS, consultables con `/usage`.
+- El límite diario de tokens de Claude está desactivado temporalmente; el consumo se sigue registrando. Los límites de STT y TTS permanecen activos.
 - Los fallos y rate limits se convierten en mensajes seguros sin filtrar detalles.
 - `backup-gwen.ps1` crea backups consistentes de SQLite con retención configurable.
 - Existe una interfaz web privada en `http://127.0.0.1:8765`, con texto, grabación
