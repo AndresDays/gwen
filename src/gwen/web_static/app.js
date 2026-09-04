@@ -11,9 +11,14 @@ const usageDialog = document.querySelector('#usageDialog');
 const usageDetails = document.querySelector('#usageDetails');
 const toast = document.querySelector('#toast');
 let state = null;
-let recorder = null;
-let chunks = [];
+let audioSession = null;
 let startedAt = 0;
+const microphoneSelect = document.querySelector('#microphoneSelect');
+const inputLevel = document.querySelector('#inputLevel');
+const recordingLabel = document.querySelector('#recordingLabel');
+const sessionButton = document.querySelector('#sessionButton');
+let continuousSession = null;
+let gwenAudio = null;
 let timer = null;
 
 function showToast(text) {
@@ -122,39 +127,230 @@ document.querySelector('#usageButton').addEventListener('click', async () => {
 });
 document.querySelector('#closeUsage').addEventListener('click', () => usageDialog.close());
 
-micButton.addEventListener('click', async () => {
-  if (recorder?.state === 'recording') { recorder.stop(); return; }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-    chunks = []; startedAt = Date.now();
-    const preferredTypes = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'];
-    const mimeType = preferredTypes.find(type => MediaRecorder.isTypeSupported(type));
-    recorder = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 128000 } : undefined);
-    recorder.addEventListener('dataavailable', event => chunks.push(event.data));
-    recorder.addEventListener('stop', async () => {
-      stream.getTracks().forEach(track => track.stop());
-      clearInterval(timer); recordingStatus.hidden = true; micButton.classList.remove('recording');
-      const duration = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
-      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-      if (blob.size < 1000) { showToast('La grabación quedó vacía. Mantén pulsado un poco más.'); return; }
-      const extension = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('mp4') ? 'm4a' : 'webm';
-      const form = new FormData(); form.append('audio', blob, `voice.${extension}`); form.append('duration', String(duration));
-      const voiceMessage = addMessage('user', '🎙️ Procesando tu voz…'); setBusy(true);
-      try {
-        const result = await request('/api/voice', { method: 'POST', body: form });
-        voiceMessage.textContent = result.transcript ? `🎙️ ${result.transcript}` : '🎙️ Mensaje de voz';
-        addMessage('assistant', result.answer);
-        if (result.audio) new Audio(`data:${result.audio_type};base64,${result.audio}`).play().catch(() => {});
-      } catch (error) { showToast(error.message); }
-      finally { setBusy(false); }
-    });
-    recorder.start(); micButton.classList.add('recording'); recordingStatus.hidden = false;
-    timer = setInterval(() => {
-      const seconds = Math.floor((Date.now() - startedAt) / 1000);
-      recordingTime.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-      if (seconds >= 600) recorder.stop();
-    }, 250);
-  } catch (_) { showToast('Necesito permiso para usar el micrófono.'); }
-});
+async function refreshMicrophones() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  const current = microphoneSelect.value;
+  const devices = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'audioinput');
+  microphoneSelect.replaceChildren(new Option('Predeterminado', ''));
+  devices.forEach((device, index) => microphoneSelect.add(new Option(device.label || `Micrófono ${index + 1}`, device.deviceId)));
+  if ([...microphoneSelect.options].some(option => option.value === current)) microphoneSelect.value = current;
+}
 
+function mergeBuffers(buffers) {
+  const length = buffers.reduce((total, buffer) => total + buffer.length, 0);
+  const merged = new Float32Array(length);
+  let offset = 0;
+  buffers.forEach(buffer => { merged.set(buffer, offset); offset += buffer.length; });
+  return merged;
+}
+
+function resample(input, sourceRate, targetRate = 16000) {
+  if (sourceRate === targetRate) return input;
+  const ratio = sourceRate / targetRate;
+  const output = new Float32Array(Math.round(input.length / ratio));
+  for (let index = 0; index < output.length; index += 1) {
+    const start = Math.floor(index * ratio);
+    const end = Math.min(input.length, Math.floor((index + 1) * ratio));
+    let sum = 0;
+    for (let cursor = start; cursor < end; cursor += 1) sum += input[cursor];
+    output[index] = sum / Math.max(1, end - start);
+  }
+  return output;
+}
+
+function encodeWav(samples, sampleRate = 16000) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const write = (offset, text) => [...text].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+  write(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); write(8, 'WAVE'); write(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+  samples.forEach((sample, index) => view.setInt16(44 + index * 2, Math.max(-1, Math.min(1, sample)) * (sample < 0 ? 32768 : 32767), true));
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function startAudioRecording() {
+  const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+  if (microphoneSelect.value) audio.deviceId = { exact: microphoneSelect.value };
+  const stream = await navigator.mediaDevices.getUserMedia({ audio });
+  await refreshMicrophones();
+  const context = new AudioContext();
+  const source = context.createMediaStreamSource(stream);
+  const processor = context.createScriptProcessor(4096, 1, 1);
+  const silent = context.createGain(); silent.gain.value = 0;
+  const buffers = [];
+  audioSession = { stream, context, source, processor, silent, buffers, maxLevel: 0 };
+  processor.onaudioprocess = event => {
+    if (!audioSession) return;
+    const samples = new Float32Array(event.inputBuffer.getChannelData(0));
+    buffers.push(samples);
+    let energy = 0;
+    for (const sample of samples) energy += sample * sample;
+    const rms = Math.sqrt(energy / samples.length);
+    audioSession.maxLevel = Math.max(audioSession.maxLevel, rms);
+    inputLevel.style.width = `${Math.min(100, rms * 900)}%`;
+  };
+  source.connect(processor); processor.connect(silent); silent.connect(context.destination);
+  startedAt = Date.now(); micButton.classList.add('recording'); recordingStatus.hidden = false;
+  timer = setInterval(() => {
+    const seconds = Math.floor((Date.now() - startedAt) / 1000);
+    recordingTime.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    if (seconds >= 600) stopAudioRecording();
+  }, 250);
+}
+
+async function stopAudioRecording() {
+  const session = audioSession;
+  if (!session) return;
+  audioSession = null; clearInterval(timer); session.processor.disconnect(); session.source.disconnect();
+  session.stream.getTracks().forEach(track => track.stop()); await session.context.close();
+  recordingStatus.hidden = true; micButton.classList.remove('recording'); inputLevel.style.width = '0';
+  const duration = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+  const samples = resample(mergeBuffers(session.buffers), session.context.sampleRate);
+  if (session.maxLevel < 0.006 || samples.length < 8000) {
+    showToast('No llegó señal del micrófono. Elige otra entrada en MICRÓFONO y prueba de nuevo.');
+    return;
+  }
+  const form = new FormData(); form.append('audio', encodeWav(samples), 'voice.wav'); form.append('duration', String(duration));
+  const voiceMessage = addMessage('user', '🎙️ Procesando tu voz…'); setBusy(true);
+  try {
+    const result = await request('/api/voice', { method: 'POST', body: form });
+    voiceMessage.textContent = result.transcript ? `🎙️ ${result.transcript}` : '🎙️ Mensaje de voz';
+    addMessage('assistant', result.answer);
+    if (result.audio) new Audio(`data:${result.audio_type};base64,${result.audio}`).play().catch(() => {});
+  } catch (error) { voiceMessage.textContent = '🎙️ Grabación no procesada'; showToast(error.message); }
+  finally { setBusy(false); }
+}
+
+async function playGwenAudio(result) {
+  if (!result.audio) return;
+  await new Promise(resolve => {
+    gwenAudio = new Audio(`data:${result.audio_type};base64,${result.audio}`);
+    gwenAudio.addEventListener('ended', resolve, { once: true });
+    gwenAudio.addEventListener('error', resolve, { once: true });
+    gwenAudio.play().catch(resolve);
+  });
+  gwenAudio = null;
+}
+
+async function sendContinuousTurn(session) {
+  if (!continuousSession || session.processing) return;
+  session.processing = true;
+  recordingLabel.textContent = 'GWEN ESTÁ PENSANDO';
+  inputLevel.style.width = '0';
+  const samples = resample(mergeBuffers(session.utterance), session.context.sampleRate);
+  session.utterance = [];
+  const duration = Math.max(1, Math.round(samples.length / 16000));
+  const voiceMessage = addMessage('user', '🎙️ Interpretando…');
+  setBusy(true);
+  try {
+    const form = new FormData();
+    form.append('audio', encodeWav(samples), 'voice.wav');
+    form.append('duration', String(duration));
+    const result = await request('/api/voice', { method: 'POST', body: form });
+    voiceMessage.textContent = result.transcript ? `🎙️ ${result.transcript}` : '🎙️ Mensaje de voz';
+    addMessage('assistant', result.answer);
+    if (continuousSession === session) {
+      recordingLabel.textContent = 'GWEN ESTÁ HABLANDO';
+      await playGwenAudio(result);
+    }
+  } catch (error) {
+    voiceMessage.textContent = '🎙️ Turno no procesado';
+    showToast(error.message);
+  } finally {
+    setBusy(false);
+    if (continuousSession === session) {
+      session.processing = false;
+      session.speaking = false;
+      session.speechFrames = 0;
+      session.silenceStarted = 0;
+      session.preRoll = [];
+      recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS';
+    }
+  }
+}
+
+async function startContinuousSession() {
+  if (audioSession) await stopAudioRecording();
+  const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+  if (microphoneSelect.value) audio.deviceId = { exact: microphoneSelect.value };
+  const stream = await navigator.mediaDevices.getUserMedia({ audio });
+  await refreshMicrophones();
+  const context = new AudioContext();
+  const source = context.createMediaStreamSource(stream);
+  const processor = context.createScriptProcessor(4096, 1, 1);
+  const silent = context.createGain(); silent.gain.value = 0;
+  const session = {
+    stream, context, source, processor, silent, processing: false, speaking: false,
+    speechFrames: 0, silenceStarted: 0, preRoll: [], utterance: [], noiseFloor: .003
+  };
+  continuousSession = session;
+  processor.onaudioprocess = event => {
+    if (continuousSession !== session || session.processing) return;
+    const samples = new Float32Array(event.inputBuffer.getChannelData(0));
+    let energy = 0;
+    for (const sample of samples) energy += sample * sample;
+    const rms = Math.sqrt(energy / samples.length);
+    inputLevel.style.width = `${Math.min(100, rms * 900)}%`;
+    const threshold = Math.max(.006, session.noiseFloor * 3);
+    if (!session.speaking) {
+      if (rms < .02) session.noiseFloor = session.noiseFloor * .98 + rms * .02;
+      session.preRoll.push(samples);
+      if (session.preRoll.length > 7) session.preRoll.shift();
+      session.speechFrames = rms > threshold ? session.speechFrames + 1 : 0;
+      if (session.speechFrames >= 2) {
+        session.speaking = true;
+        session.utterance = [...session.preRoll];
+        session.silenceStarted = 0;
+        recordingLabel.textContent = 'TE ESCUCHO';
+      }
+      return;
+    }
+    session.utterance.push(samples);
+    if (rms < threshold * .72) {
+      if (!session.silenceStarted) session.silenceStarted = performance.now();
+    } else {
+      session.silenceStarted = 0;
+    }
+    const utteranceSeconds = session.utterance.length * 4096 / context.sampleRate;
+    if ((session.silenceStarted && performance.now() - session.silenceStarted > 900 && utteranceSeconds > .65) || utteranceSeconds > 45) {
+      sendContinuousTurn(session);
+    }
+  };
+  source.connect(processor); processor.connect(silent); silent.connect(context.destination);
+  sessionButton.classList.add('active'); sessionButton.innerHTML = '<span></span> Finalizar voz';
+  document.querySelector('.shell').classList.add('voice-session');
+  micButton.disabled = true; recordingStatus.hidden = false; recordingTime.textContent = 'LIVE';
+  recordingLabel.textContent = 'CALIBRANDO AMBIENTE…';
+  window.setTimeout(() => { if (continuousSession === session && !session.speaking) recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS'; }, 900);
+}
+
+async function stopContinuousSession() {
+  const session = continuousSession;
+  if (!session) return;
+  continuousSession = null;
+  if (gwenAudio) { gwenAudio.pause(); gwenAudio = null; }
+  session.processor.disconnect(); session.source.disconnect(); session.stream.getTracks().forEach(track => track.stop());
+  await session.context.close();
+  sessionButton.classList.remove('active'); sessionButton.innerHTML = '<span></span> Iniciar voz';
+  document.querySelector('.shell').classList.remove('voice-session');
+  micButton.disabled = false; recordingStatus.hidden = true; inputLevel.style.width = '0';
+  showToast('Sesión de voz finalizada');
+}
+
+sessionButton.addEventListener('click', async () => {
+  try { if (continuousSession) await stopContinuousSession(); else await startContinuousSession(); }
+  catch (_) { showToast('No pude iniciar la sesión. Revisa el micrófono seleccionado.'); }
+});
+micButton.addEventListener('click', async () => {
+  try {
+    if (continuousSession) return;
+    if (audioSession) await stopAudioRecording(); else await startAudioRecording();
+  }
+  catch (_) { showToast('No pude abrir ese micrófono. Revisa el permiso o elige otra entrada.'); }
+});
+navigator.mediaDevices?.addEventListener?.('devicechange', refreshMicrophones);
+refreshMicrophones();
 loadState();

@@ -27,6 +27,8 @@ def test_web_interface_serves_private_chat_and_state() -> None:
         home = client.get("/")
         assert home.status_code == 200
         assert "CANAL PRIVADO ESTABLECIDO" in home.text
+        assert "microphoneSelect" in home.text
+        assert "sessionButton" in home.text
 
         response = client.post("/api/chat", json={"message": "hola"})
         assert response.status_code == 200

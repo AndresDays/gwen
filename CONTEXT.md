@@ -85,6 +85,8 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
 - El audio web usa Scribe v2, MIME normalizado, captura con reducción de ruido y
   muestra la transcripción detectada antes de la respuesta.
 - La interfaz web tiene un diseño futurista responsive sin recursos remotos.
+- La web ofrece una sesión de escucha continua con VAD local, cierre automático por
+  silencio, respuesta hablada y reanudación de escucha; conserva grabación manual.
 - Última validación conocida: 20 pruebas aprobadas y Ruff limpio.
 
 ## Incidente de seguridad resuelto
