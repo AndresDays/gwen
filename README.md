@@ -53,10 +53,11 @@ Luego abre `http://127.0.0.1:8765`. Para detenerla:
 .\stop-gwen-web.ps1
 ```
 
-Permite escribir, grabar manualmente o iniciar una sesión de escucha continua con
-detección automática de turnos, cierre rápido por silencio, Scribe v2 y voz Flash,
-revisar la transcripción, escuchar la respuesta,
-iniciar una conversación nueva y consultar el consumo diario. Las claves nunca llegan al navegador.
+Permite escribir, grabar manualmente o iniciar una sesión de escucha continua. El modo
+web transmite PCM a Scribe Realtime, muestra la transcripción parcial, recibe la respuesta
+de Claude por fragmentos y comienza a reproducir voz Flash por frases antes de que termine
+la respuesta completa. Puedes interrumpir a Gwen hablando. La grabación manual se conserva
+como respaldo y las claves nunca llegan al navegador.
 ## Elegir la voz
 
 1. En ElevenLabs abre **Voices → Explore**.

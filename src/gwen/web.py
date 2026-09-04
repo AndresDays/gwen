@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,6 +20,7 @@ from gwen.config import Settings, get_settings
 from gwen.database import Database
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
 from gwen.main import configure_logging
+from gwen.realtime import run_realtime_voice
 from gwen.repository import Repository
 from gwen.voice import ElevenLabsVoice
 
@@ -79,14 +80,17 @@ def create_app(
         voice = ElevenLabsVoice(
             settings.elevenlabs_api_key or "",
             settings.elevenlabs_voice_id or "",
-            settings.elevenlabs_tts_model,
+            settings.elevenlabs_web_tts_model,
             settings.elevenlabs_web_stt_model,
+            "mp3_22050_32",
         )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await database.initialize()
         yield
+        if voice is not None and hasattr(voice, "aclose"):
+            await voice.aclose()
         await database.close()
 
     app = FastAPI(title="Gwen", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -140,6 +144,22 @@ def create_app(
     async def new_conversation() -> None:
         async with database.session() as session:
             await Repository(session).clear_messages(settings.telegram_allowed_user_id)
+
+    @app.websocket("/ws/voice")
+    async def realtime_voice(websocket: WebSocket) -> None:
+        if voice is None:
+            await websocket.close(code=1008, reason="La voz no está configurada.")
+            return
+        try:
+            await run_realtime_voice(websocket, settings, database, assistant, voice)
+        except WebSocketDisconnect:
+            pass
+        except Exception as error:
+            logger.warning("Realtime voice connection failed (%s)", type(error).__name__)
+            try:
+                await websocket.close(code=1011, reason="La voz no está disponible.")
+            except RuntimeError:
+                pass
 
     @app.post("/api/voice", response_model=ChatResponse)
     async def voice_chat(

@@ -224,122 +224,196 @@ async function stopAudioRecording() {
   finally { setBusy(false); }
 }
 
-async function playGwenAudio(result) {
-  if (!result.audio) return;
-  await new Promise(resolve => {
-    gwenAudio = new Audio(`data:${result.audio_type};base64,${result.audio}`);
-    gwenAudio.addEventListener('ended', resolve, { once: true });
-    gwenAudio.addEventListener('error', resolve, { once: true });
-    gwenAudio.play().catch(resolve);
-  });
-  gwenAudio = null;
+function pcmBase64(samples) {
+  const pcm = new Int16Array(samples.length);
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index]));
+    pcm[index] = sample * (sample < 0 ? 32768 : 32767);
+  }
+  const bytes = new Uint8Array(pcm.buffer);
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 1) binary += String.fromCharCode(bytes[index]);
+  return btoa(binary);
 }
 
-async function sendContinuousTurn(session) {
-  if (!continuousSession || session.processing) return;
-  session.processing = true;
-  recordingLabel.textContent = 'GWEN ESTÁ PENSANDO';
-  inputLevel.style.width = '0';
-  const samples = resample(mergeBuffers(session.utterance), session.context.sampleRate);
-  session.utterance = [];
-  const duration = Math.max(1, Math.round(samples.length / 16000));
-  const voiceMessage = addMessage('user', '🎙️ Interpretando…');
-  setBusy(true);
-  try {
-    const form = new FormData();
-    form.append('audio', encodeWav(samples), 'voice.wav');
-    form.append('duration', String(duration));
-    const result = await request('/api/voice', { method: 'POST', body: form });
-    voiceMessage.textContent = result.transcript ? `🎙️ ${result.transcript}` : '🎙️ Mensaje de voz';
-    addMessage('assistant', result.answer);
-    if (continuousSession === session) {
-      recordingLabel.textContent = 'GWEN ESTÁ HABLANDO';
-      await playGwenAudio(result);
-    }
-  } catch (error) {
-    voiceMessage.textContent = '🎙️ Turno no procesado';
-    showToast(error.message);
-  } finally {
-    setBusy(false);
-    if (continuousSession === session) {
-      session.processing = false;
-      session.speaking = false;
-      session.speechFrames = 0;
-      session.silenceStarted = 0;
-      session.preRoll = [];
-      recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS';
-    }
+function stopStreamingAudio(session) {
+  session.audioQueue = [];
+  session.serverDone = false;
+  if (gwenAudio) { gwenAudio.pause(); gwenAudio.src = ''; gwenAudio = null; }
+}
+
+function finishStreamingTurn(session) {
+  if (continuousSession !== session || !session.serverDone || session.audioQueue.length || gwenAudio) return;
+  session.processing = false;
+  session.speaking = false;
+  session.speechFrames = 0;
+  session.silenceStarted = 0;
+  session.startedSpeakingAt = 0;
+  recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS';
+  setBusy(false);
+}
+
+function playNextStreamingAudio(session) {
+  if (continuousSession !== session || gwenAudio || !session.audioQueue.length) {
+    finishStreamingTurn(session);
+    return;
   }
+  const item = session.audioQueue.shift();
+  recordingLabel.textContent = 'GWEN ESTÁ HABLANDO · PUEDES INTERRUMPIR';
+  gwenAudio = new Audio(`data:${item.audioType};base64,${item.audio}`);
+  const finished = () => {
+    gwenAudio = null;
+    playNextStreamingAudio(session);
+  };
+  gwenAudio.addEventListener('ended', finished, { once: true });
+  gwenAudio.addEventListener('error', finished, { once: true });
+  gwenAudio.play().catch(finished);
+}
+
+function handleRealtimeEvent(session, event) {
+  if (continuousSession !== session) return;
+  if (event.type === 'ready') {
+    session.ready = true;
+    recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS';
+  } else if (event.type === 'partial' && !session.processing) {
+    recordingLabel.textContent = event.text ? `TE ESCUCHO · ${event.text.slice(-52)}` : 'TE ESCUCHO';
+  } else if (event.type === 'transcript') {
+    session.generation = event.generation;
+    addMessage('user', `🎙️ ${event.text}`);
+  } else if (event.type === 'answer_delta' && event.generation === session.generation) {
+    if (!session.answerBody) session.answerBody = addMessage('assistant', '');
+    session.answerBody.textContent += event.text;
+    conversation.scrollTo({ top: conversation.scrollHeight, behavior: 'smooth' });
+  } else if (event.type === 'audio' && event.generation === session.generation) {
+    session.audioQueue.push({ audio: event.audio, audioType: event.audio_type });
+    playNextStreamingAudio(session);
+  } else if (event.type === 'turn_done' && event.generation === session.generation) {
+    session.serverDone = true;
+    finishStreamingTurn(session);
+  } else if (event.type === 'interrupted') {
+    stopStreamingAudio(session);
+  } else if (event.type === 'error') {
+    stopStreamingAudio(session);
+    session.processing = false;
+    setBusy(false);
+    recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS';
+    showToast(event.message || 'La voz no está disponible ahora mismo.');
+  }
+}
+
+async function openRealtimeSocket() {
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  const socket = new WebSocket(`${scheme}://${location.host}/ws/voice`);
+  await new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error('Tiempo de conexión agotado')), 10000);
+    socket.addEventListener('open', () => { window.clearTimeout(timeout); resolve(); }, { once: true });
+    socket.addEventListener('error', () => { window.clearTimeout(timeout); reject(new Error('Sin conexión')); }, { once: true });
+  });
+  return socket;
 }
 
 async function startContinuousSession() {
   if (audioSession) await stopAudioRecording();
+  const socket = await openRealtimeSocket();
   const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
   if (microphoneSelect.value) audio.deviceId = { exact: microphoneSelect.value };
-  const stream = await navigator.mediaDevices.getUserMedia({ audio });
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio }); }
+  catch (error) { socket.close(); throw error; }
   await refreshMicrophones();
   const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
   const processor = context.createScriptProcessor(2048, 1, 1);
   const silent = context.createGain(); silent.gain.value = 0;
   const session = {
-    stream, context, source, processor, silent, processing: false, speaking: false,
-    speechFrames: 0, silenceStarted: 0, preRoll: [], utterance: [], noiseFloor: .003
+    socket, stream, context, source, processor, silent, ready: false, processing: false,
+    speaking: false, speechFrames: 0, silenceStarted: 0, startedSpeakingAt: 0,
+    noiseFloor: .003, generation: 0, answerBody: null, audioQueue: [], serverDone: false
   };
   continuousSession = session;
+  socket.addEventListener('message', event => {
+    try { handleRealtimeEvent(session, JSON.parse(event.data)); } catch (_) {}
+  });
+  socket.addEventListener('close', () => {
+    if (continuousSession === session) {
+      showToast('Se cerró la voz en vivo. Puedes seguir usando el botón de micrófono.');
+      stopContinuousSession();
+    }
+  });
   processor.onaudioprocess = event => {
-    if (continuousSession !== session || session.processing) return;
+    if (continuousSession !== session || socket.readyState !== WebSocket.OPEN) return;
     const samples = new Float32Array(event.inputBuffer.getChannelData(0));
     let energy = 0;
     for (const sample of samples) energy += sample * sample;
     const rms = Math.sqrt(energy / samples.length);
     inputLevel.style.width = `${Math.min(100, rms * 900)}%`;
     const threshold = Math.max(.006, session.noiseFloor * 3);
+
+    if (session.processing) {
+      const interruptionThreshold = Math.max(.014, session.noiseFloor * 4.5);
+      session.speechFrames = rms > interruptionThreshold ? session.speechFrames + 1 : 0;
+      if (session.speechFrames < 3) return;
+      stopStreamingAudio(session);
+      socket.send(JSON.stringify({ type: 'interrupt' }));
+      session.processing = false;
+      session.speaking = true;
+      session.startedSpeakingAt = performance.now();
+      session.silenceStarted = 0;
+      session.answerBody = null;
+      recordingLabel.textContent = 'TE ESCUCHO';
+    }
+
+    socket.send(JSON.stringify({ type: 'audio', audio: pcmBase64(resample(samples, context.sampleRate)) }));
     if (!session.speaking) {
       if (rms < .02) session.noiseFloor = session.noiseFloor * .98 + rms * .02;
-      session.preRoll.push(samples);
-      if (session.preRoll.length > 12) session.preRoll.shift();
       session.speechFrames = rms > threshold ? session.speechFrames + 1 : 0;
       if (session.speechFrames >= 2) {
         session.speaking = true;
-        session.utterance = [...session.preRoll];
+        session.startedSpeakingAt = performance.now();
         session.silenceStarted = 0;
         recordingLabel.textContent = 'TE ESCUCHO';
       }
       return;
     }
-    session.utterance.push(samples);
     if (rms < threshold * .72) {
       if (!session.silenceStarted) session.silenceStarted = performance.now();
-    } else {
-      session.silenceStarted = 0;
-    }
-    const utteranceSeconds = session.utterance.length * processor.bufferSize / context.sampleRate;
-    if ((session.silenceStarted && performance.now() - session.silenceStarted > 550 && utteranceSeconds > .65) || utteranceSeconds > 45) {
-      sendContinuousTurn(session);
+    } else session.silenceStarted = 0;
+    const utteranceSeconds = (performance.now() - session.startedSpeakingAt) / 1000;
+    if ((session.silenceStarted && performance.now() - session.silenceStarted > 420 && utteranceSeconds > .45) || utteranceSeconds > 45) {
+      socket.send(JSON.stringify({ type: 'commit', duration: Math.max(1, Math.round(utteranceSeconds)) }));
+      session.processing = true;
+      session.speaking = false;
+      session.speechFrames = 0;
+      session.answerBody = null;
+      session.serverDone = false;
+      recordingLabel.textContent = 'GWEN ESTÁ PENSANDO';
+      setBusy(true);
     }
   };
   source.connect(processor); processor.connect(silent); silent.connect(context.destination);
   sessionButton.classList.add('active'); sessionButton.innerHTML = '<span></span> Finalizar voz';
   document.querySelector('.shell').classList.add('voice-session');
   micButton.disabled = true; recordingStatus.hidden = false; recordingTime.textContent = 'LIVE';
-  recordingLabel.textContent = 'CALIBRANDO AMBIENTE…';
-  window.setTimeout(() => { if (continuousSession === session && !session.speaking) recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS'; }, 900);
+  recordingLabel.textContent = 'CONECTANDO VOZ EN VIVO…';
 }
 
 async function stopContinuousSession() {
   const session = continuousSession;
   if (!session) return;
   continuousSession = null;
-  if (gwenAudio) { gwenAudio.pause(); gwenAudio = null; }
+  stopStreamingAudio(session);
+  if (session.socket.readyState === WebSocket.OPEN) {
+    session.socket.send(JSON.stringify({ type: 'close' }));
+    session.socket.close();
+  }
   session.processor.disconnect(); session.source.disconnect(); session.stream.getTracks().forEach(track => track.stop());
   await session.context.close();
+  setBusy(false);
   sessionButton.classList.remove('active'); sessionButton.innerHTML = '<span></span> Iniciar voz';
   document.querySelector('.shell').classList.remove('voice-session');
   micButton.disabled = false; recordingStatus.hidden = true; inputLevel.style.width = '0';
   showToast('Sesión de voz finalizada');
 }
-
 sessionButton.addEventListener('click', async () => {
   try { if (continuousSession) await stopContinuousSession(); else await startContinuousSession(); }
   catch (_) { showToast('No pude iniciar la sesión. Revisa el micrófono seleccionado.'); }

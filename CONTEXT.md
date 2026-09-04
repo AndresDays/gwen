@@ -87,9 +87,12 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
 - La interfaz web tiene un diseño futurista responsive sin recursos remotos.
 - La web ofrece una sesión de escucha continua con VAD local, cierre automático por
   silencio, respuesta hablada y reanudación de escucha; conserva grabación manual.
-- La ruta de voz web de baja latencia usa conexiones HTTP persistentes, TTS Flash
-  v2.5 a 22.05 kHz/32 kbps y cierre de turno a unos 550 ms de silencio.
-- Última validación conocida: 20 pruebas aprobadas y Ruff limpio.
+- La voz continua usa WebSocket local y Scribe v2 Realtime con PCM de 16 kHz;
+  muestra transcripción parcial, transmite la respuesta de Claude y sintetiza frases con
+  TTS Flash a 22.05 kHz/32 kbps mientras la respuesta aún se genera.
+- El usuario puede interrumpir el audio de Gwen hablando; la grabación manual por HTTP
+  permanece como respaldo.
+- Última validación conocida: 23 pruebas aprobadas, Ruff y JavaScript limpios.
 
 ## Incidente de seguridad resuelto
 
@@ -115,7 +118,7 @@ autenticadas.
 - `tzdata` está declarado en `pyproject.toml` para instalaciones reproducibles.
 - El proyecto fue movido después de crear `.venv`; se reinstaló editable en la
   ruta nueva y funciona.
-- Git está inicializado, pero todavía no existe el primer commit.
+- Git está inicializado y contiene commits locales; todavía no se configuró un remoto.
 - El historial reciente se compacta automáticamente y `/new` permite borrarlo sin
   borrar recuerdos.
 - La memoria natural y `/remember` rechazan patrones comunes de secretos; esta

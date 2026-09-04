@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -131,3 +131,70 @@ class GwenAssistant:
         )
         await repository.compact_messages(user_id, self.history_limit)
         return answer
+
+    async def stream_reply(
+        self, user_id: int, text: str, repository: Repository
+    ) -> AsyncIterator[str]:
+        """Stream a reply and save it only after it completes."""
+        if len(text) > self.max_input_chars:
+            raise InputTooLong
+
+        memory_request = explicit_memory_request(text)
+        if memory_request:
+            yield await self.reply(user_id, text, repository)
+            return
+
+        zone = ZoneInfo("America/Guatemala")
+        today = datetime.now(zone).date()
+        used_tokens = await repository.usage_tokens(user_id, today)
+        if used_tokens >= self.daily_token_limit:
+            raise DailyUsageLimitReached
+
+        memories = await repository.memories(user_id)
+        summary = await repository.conversation_summary(user_id)
+        history = await repository.recent_messages(user_id, self.history_limit)
+        memory_text = "\n".join(f"- {item.content}" for item in memories) or "- Ninguno"
+        summary_text = summary or "Sin resumen anterior."
+        messages = [{"role": item.role, "content": item.content} for item in history]
+        messages.append({"role": "user", "content": text})
+        system = (
+            f"{SYSTEM_PROMPT}\n\n{current_context()}\n\nRecuerdos:\n{memory_text}"
+            f"\n\nContexto anterior compactado:\n{summary_text}"
+        )
+        estimated_tokens = (len(system) + sum(len(item["content"]) for item in messages)) // 4
+        if used_tokens + estimated_tokens + 900 > self.daily_token_limit:
+            raise DailyUsageLimitReached
+
+        chunks: list[str] = []
+        try:
+            async with self.client.messages.stream(
+                model=self.model,
+                max_tokens=900,
+                system=system,
+                messages=messages,  # type: ignore[arg-type]
+            ) as stream:
+                async for chunk in stream.text_stream:
+                    chunks.append(chunk)
+                    yield chunk
+                response = await stream.get_final_message()
+        except (APIConnectionError, APITimeoutError, RateLimitError) as error:
+            logger.warning("Anthropic stream failed (%s)", type(error).__name__)
+            raise ProviderUnavailable from error
+        except APIStatusError as error:
+            logger.warning(
+                "Anthropic stream failed (%s status=%s)",
+                type(error).__name__,
+                error.status_code,
+            )
+            raise ProviderUnavailable from error
+
+        answer = "".join(chunks).strip()
+        await repository.add_message(user_id, "user", text)
+        await repository.add_message(user_id, "assistant", answer)
+        await repository.add_usage(
+            user_id,
+            today,
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+        )
+        await repository.compact_messages(user_id, self.history_limit)
