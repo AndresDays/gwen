@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>GWEN // Neural Interface</title>
-  <link rel="stylesheet" href="/static/styles.css?v=8">
+  <link rel="stylesheet" href="/static/styles.css?v=9">
 </head>
 <body>
   <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -23,6 +23,7 @@
       </div>
       <div class="header-actions">
         <button id="sessionButton" class="session-button" type="button"><span></span> Iniciar voz</button>
+        <button id="codeButton" class="quiet" type="button" hidden>&lt;/&gt; Código</button>
         <button id="usageButton" class="quiet" type="button"><span class="button-dot"></span> Métricas</button>
         <button id="newButton" class="quiet" type="button">＋ Nueva sesión</button>
       </div>
@@ -55,12 +56,26 @@
     </section>
   </main>
 
+  <dialog id="codeDialog" class="code-dialog">
+    <div class="dialog-scan"></div><button id="closeCode" class="dialog-close" aria-label="Cerrar">×</button>
+    <p class="eyebrow">CLAUDE CODE · CONTROL LOCAL</p><h2>Programar con Gwen</h2>
+    <form id="codeForm" class="code-form">
+      <label for="codeWorkspace">Proyecto autorizado</label><select id="codeWorkspace"></select>
+      <label for="codeTask">¿Qué quieres que haga?</label><textarea id="codeTask" rows="5" maxlength="12000" required></textarea>
+      <button id="codePlanButton" class="quiet" type="submit">Preparar plan</button>
+    </form>
+    <pre id="codeResult" class="code-result" hidden></pre>
+    <div id="codeApproval" class="code-approval" hidden>
+      <label><input id="codeCommit" type="checkbox"> Crear commit si las pruebas pasan</label>
+      <button id="codeExecuteButton" class="session-button" type="button">Confirmar y ejecutar</button>
+    </div>
+  </dialog>
   <dialog id="usageDialog">
     <div class="dialog-scan"></div><button id="closeUsage" class="dialog-close" aria-label="Cerrar">×</button>
     <p class="eyebrow">TELEMETRÍA LOCAL</p><h2>Consumo de hoy</h2>
     <div id="usageDetails" class="usage-details"></div>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
-  <script src="/static/app.js?v=7" defer></script>
+  <script src="/static/app.js?v=9" defer></script>
 </body>
 </html>

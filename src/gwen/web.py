@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from importlib.resources import files
+from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
@@ -26,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from gwen.assistant import GwenAssistant
+from gwen.code_worker import ClaudeCodeWorker
 from gwen.config import Settings, get_settings
 from gwen.database import Database
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
@@ -57,6 +59,22 @@ class ChatResponse(BaseModel):
     audio_type: str | None = None
 
 
+class CodeTaskRequest(BaseModel):
+    workspace_id: str = Field(min_length=1, max_length=64)
+    task: str = Field(min_length=1, max_length=12_000)
+    commit: bool = False
+
+
+class CodePlanResponse(BaseModel):
+    plan: str
+
+
+class CodeExecutionResponse(BaseModel):
+    answer: str
+    checks: list[str]
+    committed: bool
+    diff: str
+
 def normalized_audio_type(content_type: str | None) -> str:
     value = (content_type or "audio/webm").split(";", 1)[0].strip().lower()
     return value if value.startswith("audio/") else "audio/webm"
@@ -84,9 +102,13 @@ def create_app(
     database: Database | None = None,
     assistant: GwenAssistant | None = None,
     voice: ElevenLabsVoice | None = None,
+    code_worker: ClaudeCodeWorker | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     database = database or Database(settings.database_url)
+    worker_config = Path("gwen-code-workspaces.json")
+    if code_worker is None and worker_config.is_file():
+        code_worker = ClaudeCodeWorker(worker_config)
     if settings.web_remote_enabled and not (
         settings.web_password_hash
         and settings.web_session_secret
@@ -222,6 +244,44 @@ def create_app(
             "voice_enabled": voice is not None,
         }
 
+    def local_code_worker(request: Request) -> ClaudeCodeWorker:
+        if request.url.hostname not in {"127.0.0.1", "localhost", "testserver"}:
+            raise HTTPException(403, "La programación solo está disponible desde esta PC.")
+        if code_worker is None:
+            raise HTTPException(503, "Claude Code no está configurado.")
+        return code_worker
+
+    @app.get("/api/code/workspaces")
+    async def code_workspaces(request: Request) -> dict[str, object]:
+        worker = local_code_worker(request)
+        return {"workspaces": worker.public_workspaces()}
+
+    @app.post("/api/code/plan", response_model=CodePlanResponse)
+    async def code_plan(request: Request, payload: CodeTaskRequest) -> CodePlanResponse:
+        worker = local_code_worker(request)
+        try:
+            return CodePlanResponse(plan=await worker.plan(payload.workspace_id, payload.task))
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
+        except Exception as error:
+            logger.warning("Claude Code plan failed (%s)", type(error).__name__)
+            raise HTTPException(503, "Claude Code no pudo preparar el plan.") from None
+
+    @app.post("/api/code/execute", response_model=CodeExecutionResponse)
+    async def code_execute(
+        request: Request, payload: CodeTaskRequest
+    ) -> CodeExecutionResponse:
+        worker = local_code_worker(request)
+        try:
+            result = await worker.execute(payload.workspace_id, payload.task, payload.commit)
+            return CodeExecutionResponse(**result)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
+        except Exception as error:
+            logger.warning("Claude Code execution failed (%s)", type(error).__name__)
+            raise HTTPException(
+                409, "Claude Code no pudo ejecutar la tarea de forma segura."
+            ) from None
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(payload: ChatRequest) -> ChatResponse:
         try:

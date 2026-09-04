@@ -8,6 +8,14 @@ const micButton = document.querySelector('#micButton');
 const recordingStatus = document.querySelector('#recordingStatus');
 const recordingTime = document.querySelector('#recordingTime');
 const usageDialog = document.querySelector('#usageDialog');
+const codeButton = document.querySelector('#codeButton');
+const codeDialog = document.querySelector('#codeDialog');
+const codeForm = document.querySelector('#codeForm');
+const codeWorkspace = document.querySelector('#codeWorkspace');
+const codeTask = document.querySelector('#codeTask');
+const codeResult = document.querySelector('#codeResult');
+const codeApproval = document.querySelector('#codeApproval');
+const codeCommit = document.querySelector('#codeCommit');
 const usageDetails = document.querySelector('#usageDetails');
 const toast = document.querySelector('#toast');
 let state = null;
@@ -182,6 +190,40 @@ document.querySelector('#usageButton').addEventListener('click', async () => {
   } catch (error) { showToast(error.message); }
 });
 document.querySelector('#closeUsage').addEventListener('click', () => usageDialog.close());
+async function loadCodeWorkspaces() {
+  try {
+    const result = await request('/api/code/workspaces');
+    codeWorkspace.replaceChildren(...result.workspaces.map(item => new Option(item.label, item.id)));
+    codeButton.hidden = result.workspaces.length === 0;
+  } catch (_) { codeButton.hidden = true; }
+}
+codeButton.addEventListener('click', () => codeDialog.showModal());
+document.querySelector('#closeCode').addEventListener('click', () => codeDialog.close());
+codeForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  codeResult.hidden = false; codeResult.textContent = 'Claude está preparando el plan…';
+  codeApproval.hidden = true;
+  try {
+    const result = await request('/api/code/plan', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace_id: codeWorkspace.value, task: codeTask.value })
+    });
+    codeResult.textContent = result.plan; codeApproval.hidden = false;
+  } catch (error) { codeResult.textContent = error.message; }
+});
+document.querySelector('#codeExecuteButton').addEventListener('click', async () => {
+  if (!window.confirm('Claude editará este proyecto y ejecutará sus pruebas. ¿Continuar?')) return;
+  codeApproval.hidden = true; codeResult.textContent = 'Claude está trabajando…';
+  try {
+    const result = await request('/api/code/execute', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace_id: codeWorkspace.value, task: codeTask.value, commit: codeCommit.checked })
+    });
+    const status = result.committed ? 'Commit creado.' : 'Cambios listos sin commit.';
+    codeResult.textContent = `${result.answer}\n\n${status}\n${result.diff || ''}`;
+  } catch (error) { codeResult.textContent = error.message; }
+});
+loadCodeWorkspaces();
 
 async function refreshMicrophones() {
   if (!navigator.mediaDevices?.enumerateDevices) return;

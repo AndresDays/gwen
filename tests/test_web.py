@@ -29,6 +29,7 @@ def test_web_interface_serves_private_chat_and_state() -> None:
         assert "CANAL PRIVADO ESTABLECIDO" in home.text
         assert "microphoneSelect" in home.text
         assert "sessionButton" in home.text
+        assert "codeButton" in home.text
 
         response = client.post("/api/chat", json={"message": "hola"})
         assert response.status_code == 200
@@ -149,7 +150,7 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
     with TestClient(app, base_url="http://localhost") as client:
         manifest = client.get("/manifest.webmanifest")
         worker = client.get("/sw.js")
-        script = client.get("/static/app.js?v=7")
+        script = client.get("/static/app.js?v=9")
         home = client.get("/")
         assert manifest.status_code == 200
         assert manifest.json()["display"] == "standalone"
@@ -161,4 +162,39 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
         assert "gwen_voice_latency_v1" in script.text
         assert "mobileVoiceDock" in home.text
         assert "syncStandaloneLayout" in script.text
-        assert "gwen-shell-v8" in worker.text
+        assert "gwen-shell-v9" in worker.text
+
+
+def test_code_endpoints_use_only_the_injected_local_worker() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    worker = SimpleNamespace(
+        public_workspaces=lambda: [{"id": "gwen", "label": "Gwen"}],
+        plan=AsyncMock(return_value="Plan seguro"),
+        execute=AsyncMock(
+            return_value={"answer": "Listo", "checks": ["pytest"], "committed": True, "diff": ""}
+        ),
+    )
+    app = create_app(
+        settings=settings,
+        database=Database(settings.database_url),
+        assistant=SimpleNamespace(daily_token_limit=100_000),
+        voice=None,
+        code_worker=worker,
+    )
+    with TestClient(app, base_url="http://localhost") as client:
+        assert client.get("/api/code/workspaces").json()["workspaces"][0]["id"] == "gwen"
+        plan = client.post("/api/code/plan", json={"workspace_id": "gwen", "task": "Planifica"})
+        execute = client.post(
+            "/api/code/execute",
+            json={"workspace_id": "gwen", "task": "Implementa", "commit": True},
+        )
+    assert plan.json() == {"plan": "Plan seguro"}
+    assert execute.json()["committed"] is True
+    worker.plan.assert_awaited_once_with("gwen", "Planifica")
+    worker.execute.assert_awaited_once_with("gwen", "Implementa", True)
