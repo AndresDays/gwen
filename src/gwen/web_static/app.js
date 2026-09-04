@@ -241,14 +241,27 @@ function pcmBase64(samples) {
   return btoa(binary);
 }
 
+function base64Buffer(encoded) {
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes.buffer;
+}
+
 function stopStreamingAudio(session) {
   session.audioQueue = [];
   session.serverDone = false;
-  if (gwenAudio) { gwenAudio.pause(); gwenAudio.src = ''; gwenAudio = null; }
+  session.playbackToken += 1;
+  if (session.audioSource) {
+    try { session.audioSource.stop(); } catch (_) {}
+    session.audioSource.disconnect();
+    session.audioSource = null;
+  }
+  session.audioPlaying = false;
 }
 
 function finishStreamingTurn(session) {
-  if (continuousSession !== session || !session.serverDone || session.audioQueue.length || gwenAudio) return;
+  if (continuousSession !== session || !session.serverDone || session.audioQueue.length || session.audioPlaying) return;
   session.processing = false;
   session.speaking = false;
   session.speechFrames = 0;
@@ -258,23 +271,34 @@ function finishStreamingTurn(session) {
   setBusy(false);
 }
 
-function playNextStreamingAudio(session) {
-  if (continuousSession !== session || gwenAudio || !session.audioQueue.length) {
+async function playNextStreamingAudio(session) {
+  if (continuousSession !== session || session.audioPlaying || !session.audioQueue.length) {
     finishStreamingTurn(session);
     return;
   }
   const item = session.audioQueue.shift();
+  const token = session.playbackToken;
+  session.audioPlaying = true;
   recordingLabel.textContent = 'GWEN ESTÁ HABLANDO · PUEDES INTERRUMPIR';
-  gwenAudio = new Audio(`data:${item.audioType};base64,${item.audio}`);
-  const finished = () => {
-    gwenAudio = null;
-    playNextStreamingAudio(session);
-  };
-  gwenAudio.addEventListener('ended', finished, { once: true });
-  gwenAudio.addEventListener('error', finished, { once: true });
-  gwenAudio.play().catch(finished);
+  try {
+    if (session.context.state === 'suspended') await session.context.resume();
+    const decoded = await session.context.decodeAudioData(base64Buffer(item.audio));
+    if (continuousSession !== session || token !== session.playbackToken) return;
+    const source = session.context.createBufferSource();
+    session.audioSource = source;
+    source.buffer = decoded;
+    source.connect(session.context.destination);
+    source.onended = () => {
+      if (session.audioSource === source) session.audioSource = null;
+      session.audioPlaying = false;
+      playNextStreamingAudio(session);
+    };
+    source.start(0);
+  } catch (_) {
+    session.audioPlaying = false;
+    if (token === session.playbackToken) playNextStreamingAudio(session);
+  }
 }
-
 function handleRealtimeEvent(session, event) {
   if (continuousSession !== session) return;
   if (event.type === 'ready') {
@@ -318,22 +342,31 @@ async function openRealtimeSocket() {
 }
 
 async function startContinuousSession() {
+  const AudioEngine = window.AudioContext || window.webkitAudioContext;
+  const context = new AudioEngine();
+  await context.resume();
+  const unlock = context.createBufferSource();
+  unlock.buffer = context.createBuffer(1, 1, context.sampleRate);
+  unlock.connect(context.destination);
+  unlock.start(0);
   if (audioSession) await stopAudioRecording();
-  const socket = await openRealtimeSocket();
+  let socket;
+  try { socket = await openRealtimeSocket(); }
+  catch (error) { await context.close(); throw error; }
   const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
   if (microphoneSelect.value) audio.deviceId = { exact: microphoneSelect.value };
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio }); }
   catch (error) { socket.close(); throw error; }
   await refreshMicrophones();
-  const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
   const processor = context.createScriptProcessor(2048, 1, 1);
   const silent = context.createGain(); silent.gain.value = 0;
   const session = {
     socket, stream, context, source, processor, silent, ready: false, processing: false,
     speaking: false, speechFrames: 0, silenceStarted: 0, startedSpeakingAt: 0,
-    noiseFloor: .003, generation: 0, answerBody: null, audioQueue: [], serverDone: false
+    noiseFloor: .003, generation: 0, answerBody: null, audioQueue: [], serverDone: false,
+    audioSource: null, audioPlaying: false, playbackToken: 0
   };
   continuousSession = session;
   socket.addEventListener('message', event => {

@@ -23,3 +23,16 @@
 }
 .login-form input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(73,231,255,.1); }
 .login-form button { padding: 14px; border: 0; border-radius: 12px; font-weight: 700; cursor: pointer; }
+@media(max-width:640px){
+  .shell{height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
+  .conversation{padding-bottom:76px}
+  .composer-wrap{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+  .session-button{
+    left:14px;right:14px;bottom:calc(126px + env(safe-area-inset-bottom));
+    width:auto;min-height:48px;transform:none
+  }
+  .session-button:hover,.session-button.active{transform:none}
+  .shell.voice-session .session-button{bottom:calc(154px + env(safe-area-inset-bottom))}
+  body:has(#messageInput:focus) .session-button{opacity:0;pointer-events:none}
+  .circle{min-width:44px;min-height:44px}
+}
