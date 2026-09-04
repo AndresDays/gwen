@@ -162,17 +162,19 @@ Hardware confirmado para la app nativa:
 Se priorizó esta fase antes de la app nativa del iPhone. Existen
 `start-gwen-desktop.ps1` e `install-gwen-desktop.ps1` para abrir la interfaz
 local en una ventana independiente de Edge y crear el acceso directo de Windows.
-Claude Code 2.1.223 está instalado, pero al último chequeo aún no estaba
-autenticado.
-## Modo de programación futuro
 
-Diseñar un trabajador local restringido que reciba tareas autorizadas y ejecute
-Claude Code con `claude -p`, autenticado únicamente con Claude Max. Debe operar
-solo en carpetas permitidas, pedir confirmación para acciones sensibles y nunca
-aceptar comandos de shell crudos desde Telegram. El equipo debe estar encendido.
-El consumo usa límites compartidos de Claude/Claude Code; no usar fallback PAYG
-sin autorización explícita.
+Claude Code 2.1.223 está instalado y autenticado con Claude Max. El trabajador
+autoriza exactamente `C:\Users\jadr7\gwen` y `C:\Programacion\californIA`,
+bloquea secretos y rechaza repositorios con cambios pendientes. Puede editar,
+ejecutar validaciones fijas y crear commits solo después de una confirmación
+explícita.
 
+El panel visual **Código** permanece disponible únicamente en localhost. Las
+órdenes habladas, en cambio, funcionan directamente desde el chat de voz normal
+tanto en escritorio como en el iPhone autenticado por Tailscale. No requieren
+otra contraseña dentro de la app: Gwen primero lee el plan y exige una segunda
+confirmación hablada antes de modificar archivos o crear un commit. Menciones
+ambiguas no activan programación. La PC debe permanecer encendida.
 ## Próximos pasos recomendados
 
 1. Probar y refinar la interfaz web local con uso cotidiano.

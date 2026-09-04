@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -150,7 +151,7 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
     with TestClient(app, base_url="http://localhost") as client:
         manifest = client.get("/manifest.webmanifest")
         worker = client.get("/sw.js")
-        script = client.get("/static/app.js?v=9")
+        script = client.get("/static/app.js?v=11")
         home = client.get("/")
         assert manifest.status_code == 200
         assert manifest.json()["display"] == "standalone"
@@ -162,7 +163,10 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
         assert "gwen_voice_latency_v1" in script.text
         assert "mobileVoiceDock" in home.text
         assert "syncStandaloneLayout" in script.text
-        assert "gwen-shell-v9" in worker.text
+        assert "unlockCodeButton" not in home.text
+        web_source = Path("src/gwen/web.py").read_text(encoding="utf-8")
+        assert "voice_code_worker = code_worker" in web_source
+        assert "gwen-shell-v11" in worker.text
 
 
 def test_code_endpoints_use_only_the_injected_local_worker() -> None:

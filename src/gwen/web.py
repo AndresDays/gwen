@@ -306,11 +306,7 @@ def create_app(
             await websocket.close(code=1008, reason="La voz no está configurada.")
             return
         try:
-            voice_code_worker = (
-                code_worker
-                if websocket.url.hostname in {"127.0.0.1", "localhost", "testserver"}
-                else None
-            )
+            voice_code_worker = code_worker
             await run_realtime_voice(
                 websocket, settings, database, assistant, voice, voice_code_worker
             )
