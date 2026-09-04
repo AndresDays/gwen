@@ -46,6 +46,11 @@ def code_request_is_read_only(text: str) -> bool:
     return bool(re.search(reading, value)) and not re.search(editing, value)
 
 
+def code_commit_requested(text: str) -> bool:
+    value = normalized(text)
+    return bool(re.search(r"\b(commit|confirma los cambios|guarda el commit)\b", value))
+
+
 def code_confirmation(text: str) -> tuple[bool, bool] | None:
     value = normalized(text)
     if re.search(r"\b(no|cancela|cancelar|detente)\b", value):

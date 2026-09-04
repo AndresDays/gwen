@@ -12,8 +12,7 @@ from websockets.asyncio.client import connect
 
 from gwen.assistant import GwenAssistant
 from gwen.code_voice import (
-    PendingCodeTask,
-    code_confirmation,
+    code_commit_requested,
     code_request_is_read_only,
     detect_code_request,
 )
@@ -59,7 +58,6 @@ async def run_realtime_voice(
     send_lock = asyncio.Lock()
     processing: asyncio.Task[None] | None = None
     generation = 0
-    pending_code: PendingCodeTask | None = None
 
     async def send(kind: str, **payload: object) -> None:
         async with send_lock:
@@ -100,30 +98,7 @@ async def run_realtime_voice(
         try:
             await send("transcript", generation=turn, text=transcript)
             code_answer: str | None = None
-            if code_worker is not None and pending_code is not None:
-                confirmation = code_confirmation(transcript)
-                if confirmation is None:
-                    code_answer = (
-                        "Tengo un plan pendiente. Di sí, ejecútalo; sí, y haz commit; o cancela."
-                    )
-                elif not confirmation[0]:
-                    pending_code = None
-                    code_answer = "Entendido. Cancelé la tarea de programación."
-                else:
-                    task = pending_code
-                    pending_code = None
-                    acknowledgement = "Sí, ya lo hago."
-                    await send("answer_delta", generation=turn, text=acknowledgement + " ")
-                    await queue.put(acknowledgement)
-                    result = await code_worker.execute(
-                        task.workspace_id, task.task, commit=confirmation[1]
-                    )
-                    code_answer = (
-                        "Listo, ya está hecho y también creé el commit."
-                        if result["committed"]
-                        else "Listo, ya está hecho. Las pruebas pasaron correctamente."
-                    )
-            elif code_worker is not None:
+            if code_worker is not None:
                 request = detect_code_request(transcript)
                 if request is not None:
                     workspace_id, task = request
@@ -131,14 +106,24 @@ async def run_realtime_voice(
                         answer = await code_worker.inspect(workspace_id, task)
                         code_answer = f"Sí, puedo revisar {workspace_id}. {answer}"
                     else:
-                        plan = await code_worker.plan(workspace_id, task)
-                        pending_code = PendingCodeTask(workspace_id, task, plan)
-                        project = "California" if workspace_id == "california" else "Gwen"
-                        code_answer = (
-                            f"Sí, ya revisé lo necesario en {project} y puedo hacerlo. "
-                            "¿Confirmas que lo ejecute? También puedes decir: "
-                            "sí, y haz commit."
+                        acknowledgement = "Sí, ya lo hago."
+                        await send("answer_delta", generation=turn, text=acknowledgement + " ")
+                        await queue.put(acknowledgement)
+                        result = await code_worker.execute(
+                            workspace_id, task, commit=code_commit_requested(task)
                         )
+                        if not result["validation_passed"]:
+                            code_answer = (
+                                "El cambio quedó hecho, pero algunas pruebas fallaron, "
+                                "así que no creé un commit."
+                            )
+                        elif result["committed"]:
+                            code_answer = "Listo, ya está hecho y también creé el commit."
+                        else:
+                            code_answer = (
+                                "Listo, ya está hecho. Las pruebas pasaron correctamente. "
+                                "No hice commit porque no me lo pediste."
+                            )
             if code_answer is not None:
                 await send("answer_delta", generation=turn, text=code_answer)
                 buffer = code_answer

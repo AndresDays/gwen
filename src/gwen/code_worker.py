@@ -82,11 +82,16 @@ class ClaudeCodeWorker:
             raise RuntimeError("El proyecto tiene cambios pendientes; revísalos antes de ejecutar.")
         answer = await self._claude(workspace, task, edit=True)
         checks: list[str] = []
+        validation_passed = True
         for command in workspace.checks:
-            await self._run(list(command), workspace.path)
-            checks.append(" ".join(command))
+            try:
+                await self._run(list(command), workspace.path)
+                checks.append("OK: " + " ".join(command))
+            except RuntimeError:
+                validation_passed = False
+                checks.append("FALLÓ: " + " ".join(command))
         committed = False
-        if commit:
+        if commit and validation_passed:
             changed = await self._run(["git", "status", "--porcelain"], workspace.path, 30)
             if changed:
                 await self._run(["git", "add", "-A"], workspace.path, 30)
@@ -94,7 +99,13 @@ class ClaudeCodeWorker:
                 await self._run(["git", "commit", "-m", message], workspace.path, 60)
                 committed = True
         diff = await self._run(["git", "diff", "--stat"], workspace.path, 30)
-        return {"answer": answer, "checks": checks, "committed": committed, "diff": diff}
+        return {
+            "answer": answer,
+            "checks": checks,
+            "validation_passed": validation_passed,
+            "committed": committed,
+            "diff": diff,
+        }
 
     @staticmethod
     def _claude_executable() -> str:

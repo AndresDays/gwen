@@ -15,7 +15,7 @@
       "path": "C:\\Programacion\\californIA",
       "checks": [
         ["npm.cmd", "run", "lint"],
-        ["npm.cmd", "test", "--", "--run"]
+        ["npm.cmd", "test", "--", "--runInBand"]
       ]
     }
   ]

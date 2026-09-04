@@ -166,6 +166,8 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
         assert "unlockCodeButton" not in home.text
         web_source = Path("src/gwen/web.py").read_text(encoding="utf-8")
         assert "voice_code_worker = code_worker" in web_source
+        voice_source = Path("src/gwen/realtime.py").read_text(encoding="utf-8")
+        assert "Sí, ya lo hago." in voice_source
         assert "gwen-shell-v11" in worker.text
 
 
@@ -224,6 +226,7 @@ def test_normal_chat_routes_explicit_code_requests_to_worker() -> None:
             return_value={
                 "answer": "Logo actualizado.",
                 "checks": ["npm test"],
+                "validation_passed": True,
                 "committed": False,
                 "diff": "",
             }
@@ -237,7 +240,7 @@ def test_normal_chat_routes_explicit_code_requests_to_worker() -> None:
         code_worker=worker,
     )
     with TestClient(app, base_url="http://localhost") as client:
-        plan = client.post(
+        execution = client.post(
             "/api/chat",
             json={
                 "message": (
@@ -246,12 +249,17 @@ def test_normal_chat_routes_explicit_code_requests_to_worker() -> None:
                 )
             },
         )
-        assert "¿Confirmas que lo ejecute?" in plan.json()["answer"]
-        assert "Cambiar la importación" not in plan.json()["answer"]
-        execute = client.post("/api/chat", json={"message": "sí, ejecútalo"})
-        assert "Listo, ya está hecho" in execute.json()["answer"]
-        assert "Logo actualizado" not in execute.json()["answer"]
+        assert "Listo, ya está hecho" in execution.json()["answer"]
+        assert "No hice commit" in execution.json()["answer"]
+        assert "Cambiar la importación" not in execution.json()["answer"]
+        assert "Logo actualizado" not in execution.json()["answer"]
         inspect = client.post("/api/chat", json={"message": "¿Puedes ver el código de California?"})
         assert "El login usa otro logo" in inspect.json()["answer"]
     assistant.reply.assert_not_awaited()
-    worker.execute.assert_awaited_once()
+    worker.plan.assert_not_awaited()
+    worker.execute.assert_awaited_once_with(
+        "california",
+        "Gwen, en el proyecto California cambia el logo del login "
+        "por logoCDC.jpg que está en assets",
+        commit=False,
+    )
