@@ -161,4 +161,4 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
         assert "gwen_voice_latency_v1" in script.text
         assert "mobileVoiceDock" in home.text
         assert "syncStandaloneLayout" in script.text
-        assert "gwen-shell-v7" in worker.text
+        assert "gwen-shell-v8" in worker.text

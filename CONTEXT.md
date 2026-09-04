@@ -131,7 +131,8 @@ autenticadas.
 
 - En la PWA instalada de iPhone, el control `Iniciar voz` ahora ocupa un dock
   propio sobre el compositor; ya no usa posicionamiento flotante que pueda
-  encimarse con el campo de texto o con los mensajes.
+  encimarse con el campo de texto o con los mensajes. El espacio seguro inferior
+  se aplica una sola vez para aprovechar mejor la altura de la pantalla.
 
 - Solo se necesita inicialmente para el iPhone del usuario.
 - El usuario tiene una Mac, no tiene membresía Apple Developer de pago y acepta

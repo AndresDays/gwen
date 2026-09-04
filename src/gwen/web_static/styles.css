@@ -42,6 +42,8 @@
 @media(display-mode:standalone){.topbar{padding-top:env(safe-area-inset-top);height:calc(86px + env(safe-area-inset-top))}}
 @media(max-width:640px) and (display-mode:standalone){.topbar{height:calc(72px + env(safe-area-inset-top))}}
 @media(max-width:640px){
+  .standalone-app .shell{padding-bottom:0}
+  .standalone-app .composer-wrap{padding-bottom:max(4px,env(safe-area-inset-bottom))}
   .standalone-app .conversation{padding-bottom:18px}
   .standalone-app .mobile-voice-dock{display:block;width:min(800px,100%);margin:0 auto 11px}
   .standalone-app .mobile-voice-dock .session-button,
