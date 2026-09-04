@@ -174,7 +174,10 @@ El panel visual **Código** permanece disponible únicamente en localhost. Las
 tanto en escritorio como en el iPhone autenticado por Tailscale. No requieren
 otra contraseña dentro de la app: Gwen primero lee el plan y exige una segunda
 confirmación hablada antes de modificar archivos o crear un commit. Menciones
-ambiguas no activan programación. La PC debe permanecer encendida.
+ambiguas no activan programación. Preguntas explícitas como “¿puedes ver o revisar
+el código de California?” usan Claude Code en modo de solo lectura y responden
+directamente, sin crear un plan de ejecución ni pedir confirmación. La PC debe
+permanecer encendida.
 ## Próximos pasos recomendados
 
 1. Probar y refinar la interfaz web local con uso cotidiano.

@@ -30,8 +30,7 @@ class ClaudeCodeWorker:
 
     def public_workspaces(self) -> list[dict[str, str]]:
         return [
-            {"id": workspace.id, "label": workspace.label}
-            for workspace in self.workspaces.values()
+            {"id": workspace.id, "label": workspace.label} for workspace in self.workspaces.values()
         ]
 
     def workspace(self, workspace_id: str) -> CodeWorkspace:
@@ -70,6 +69,10 @@ class ClaudeCodeWorker:
         workspace = self.workspace(workspace_id)
         return await self._claude(workspace, task, edit=False)
 
+    async def inspect(self, workspace_id: str, task: str) -> str:
+        workspace = self.workspace(workspace_id)
+        return await self._claude(workspace, task, edit=False, inspection=True)
+
     async def execute(
         self, workspace_id: str, task: str, commit: bool = False
     ) -> dict[str, object]:
@@ -100,15 +103,17 @@ class ClaudeCodeWorker:
             launcher = shutil.which("claude.cmd")
             if launcher:
                 native = (
-                    Path(launcher).parent
-                    / "node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+                    Path(launcher).parent / "node_modules/@anthropic-ai/claude-code/bin/claude.exe"
                 )
                 if native.is_file():
                     return str(native)
         if not executable:
             raise RuntimeError("Claude Code no está instalado.")
         return executable
-    async def _claude(self, workspace: CodeWorkspace, task: str, edit: bool) -> str:
+
+    async def _claude(
+        self, workspace: CodeWorkspace, task: str, edit: bool, inspection: bool = False
+    ) -> str:
         prompt = task.strip()
         if not prompt:
             raise ValueError("La tarea está vacía.")
@@ -120,18 +125,32 @@ class ClaudeCodeWorker:
             "bases de datos con datos personales ni archivos de autenticación. No uses red, "
             "no publiques y no ejecutes comandos. "
         )
-        guardrail += (
-            "Implementa la tarea solicitada con cambios mínimos y explica lo realizado."
-            if edit
-            else "No modifiques archivos. Devuelve un plan breve, riesgos y archivos afectados."
-        )
+        if edit:
+            guardrail += (
+                "Implementa la tarea solicitada con cambios mínimos y explica lo realizado."
+            )
+        elif inspection:
+            guardrail += "No modifiques archivos. Inspecciona y responde directamente la pregunta."
+        else:
+            guardrail += (
+                "No modifiques archivos. Devuelve un plan breve, riesgos y archivos afectados."
+            )
         return await self._run(
             [
-                self._claude_executable(), "-p", "--permission-mode", mode, "--tools", tools,
+                self._claude_executable(),
+                "-p",
+                "--permission-mode",
+                mode,
+                "--tools",
+                tools,
                 "--disallowedTools",
                 "Read(.env),Read(.env.*),Read(**/.env),Read(**/.env.*),Write(.env),Write(.env.*),Write(**/.env),Write(**/.env.*)",
-                "--no-session-persistence", "--output-format", "text",
-                "--append-system-prompt", guardrail, prompt,
+                "--no-session-persistence",
+                "--output-format",
+                "text",
+                "--append-system-prompt",
+                guardrail,
+                prompt,
             ],
             workspace.path,
         )

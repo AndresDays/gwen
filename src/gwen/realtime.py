@@ -11,7 +11,12 @@ from fastapi import WebSocket
 from websockets.asyncio.client import connect
 
 from gwen.assistant import GwenAssistant
-from gwen.code_voice import PendingCodeTask, code_confirmation, detect_code_request
+from gwen.code_voice import (
+    PendingCodeTask,
+    code_confirmation,
+    code_request_is_read_only,
+    detect_code_request,
+)
 from gwen.code_worker import ClaudeCodeWorker
 from gwen.config import Settings
 from gwen.database import Database
@@ -99,8 +104,7 @@ async def run_realtime_voice(
                 confirmation = code_confirmation(transcript)
                 if confirmation is None:
                     code_answer = (
-                        "Tengo un plan pendiente. Di sí, ejecútalo; sí, y haz commit; "
-                        "o cancela."
+                        "Tengo un plan pendiente. Di sí, ejecútalo; sí, y haz commit; o cancela."
                     )
                 elif not confirmation[0]:
                     pending_code = None
@@ -121,12 +125,16 @@ async def run_realtime_voice(
                 request = detect_code_request(transcript)
                 if request is not None:
                     workspace_id, task = request
-                    plan = await code_worker.plan(workspace_id, task)
-                    pending_code = PendingCodeTask(workspace_id, task, plan)
-                    code_answer = (
-                        f"Este es el plan para {workspace_id}: {plan}\n\n"
-                        "¿Quieres que lo ejecute? También puedes decir: sí, y haz commit."
-                    )
+                    if code_request_is_read_only(task):
+                        answer = await code_worker.inspect(workspace_id, task)
+                        code_answer = f"Sí, puedo revisar {workspace_id}. {answer}"
+                    else:
+                        plan = await code_worker.plan(workspace_id, task)
+                        pending_code = PendingCodeTask(workspace_id, task, plan)
+                        code_answer = (
+                            f"Este es el plan para {workspace_id}: {plan}\n\n"
+                            "¿Quieres que lo ejecute? También puedes decir: sí, y haz commit."
+                        )
             if code_answer is not None:
                 await send("answer_delta", generation=turn, text=code_answer)
                 buffer = code_answer

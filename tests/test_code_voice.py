@@ -1,9 +1,16 @@
-from gwen.code_voice import code_confirmation, detect_code_request
+from gwen.code_voice import (
+    code_confirmation,
+    code_request_is_read_only,
+    detect_code_request,
+)
 
 
 def test_voice_code_request_requires_project_and_programming_verb() -> None:
     assert detect_code_request("California es un proyecto importante") is None
     assert detect_code_request("Edita el botón") is None
+    assert detect_code_request("¿Puedes ver el código de California?")[0] == "california"
+    assert code_request_is_read_only("¿Puedes ver el código de California?")
+    assert not code_request_is_read_only("Revisa y corrige el código de California")
     assert detect_code_request("Gwen, cambia mi viaje a California") is None
     assert detect_code_request("Gwen, trabaja en California y corrige el botón") == (
         "california",

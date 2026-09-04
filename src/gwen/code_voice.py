@@ -27,13 +27,23 @@ def detect_code_request(text: str) -> tuple[str, str] | None:
             r"\b(trabaja|metete|entra)\s+(en|a)\s+(el\s+proyecto\s+)?gwen\b",
         ),
     }
-    verbs = r"\b(edita|modifica|cambia|corrige|implementa|programa|arregla|agrega|anade|trabaja)\b"
+    verbs = (
+        r"\b(edita|modifica|cambia|corrige|implementa|programa|arregla|agrega|anade|"
+        r"trabaja|ver|revisa|revisar|mira|analiza|analizar|inspecciona|lee)\b"
+    )
     if not re.search(verbs, value):
         return None
     for workspace_id, patterns in projects.items():
         if any(re.search(pattern, value) for pattern in patterns):
             return workspace_id, text.strip()
     return None
+
+
+def code_request_is_read_only(text: str) -> bool:
+    value = normalized(text)
+    editing = r"\b(edita|modifica|cambia|corrige|implementa|programa|arregla|agrega|anade)\b"
+    reading = r"\b(ver|revisa|revisar|mira|analiza|analizar|inspecciona|lee)\b"
+    return bool(re.search(reading, value)) and not re.search(editing, value)
 
 
 def code_confirmation(text: str) -> tuple[bool, bool] | None:
