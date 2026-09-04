@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -13,6 +14,8 @@ from anthropic import (
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
 from gwen.memory import explicit_memory_request
 from gwen.repository import Repository
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """Eres Gwen, la asistente personal privada del usuario.
 Habla como una persona cercana, inteligente y espontánea. Adapta el idioma, el tono y
@@ -107,8 +110,14 @@ class GwenAssistant:
                 messages=messages,  # type: ignore[arg-type]
             )
         except (APIConnectionError, APITimeoutError, RateLimitError) as error:
+            logger.warning("Anthropic request failed (%s)", type(error).__name__)
             raise ProviderUnavailable from error
         except APIStatusError as error:
+            logger.warning(
+                "Anthropic request failed (%s status=%s)",
+                type(error).__name__,
+                error.status_code,
+            )
             raise ProviderUnavailable from error
 
         answer = "".join(block.text for block in response.content if block.type == "text").strip()

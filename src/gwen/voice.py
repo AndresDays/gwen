@@ -9,13 +9,15 @@ class ElevenLabsVoice:
         self.stt_model = stt_model
         self.base_url = "https://api.elevenlabs.io/v1"
 
-    async def transcribe(self, audio: bytes, filename: str = "voice.ogg") -> str:
+    async def transcribe(
+        self, audio: bytes, filename: str = "voice.ogg", content_type: str = "audio/ogg"
+    ) -> str:
         async with httpx.AsyncClient(timeout=90) as client:
             response = await client.post(
                 f"{self.base_url}/speech-to-text",
                 headers={"xi-api-key": self.api_key},
                 data={"model_id": self.stt_model},
-                files={"file": (filename, audio, "audio/ogg")},
+                files={"file": (filename, audio, content_type)},
             )
             response.raise_for_status()
             return response.json()["text"].strip()

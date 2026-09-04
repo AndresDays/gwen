@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11110f">
+  <title>Gwen — conversación privada</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="identity">
+        <div class="mark" aria-hidden="true"><span></span></div>
+        <div><h1>Gwen</h1><p><i></i> privada · en esta computadora</p></div>
+      </div>
+      <div class="header-actions">
+        <button id="usageButton" class="quiet" type="button">Uso de hoy</button>
+        <button id="newButton" class="quiet" type="button">Nueva conversación</button>
+      </div>
+    </header>
+
+    <section id="conversation" class="conversation" aria-live="polite" aria-label="Conversación">
+      <div id="welcome" class="welcome">
+        <div class="orb" aria-hidden="true"><div></div></div>
+        <p class="eyebrow">Tu espacio privado</p>
+        <h2>¿Qué tienes en mente?</h2>
+        <p>Escribe o habla. Gwen conserva el contexto y recuerda solo cuando se lo pides.</p>
+      </div>
+      <div id="messages" class="messages"></div>
+      <div id="thinking" class="thinking" hidden><span></span><span></span><span></span></div>
+    </section>
+
+    <section class="composer-wrap">
+      <div id="recordingStatus" class="recording-status" hidden>
+        <span class="record-dot"></span><span>Escuchando</span><strong id="recordingTime">0:00</strong>
+      </div>
+      <form id="composer" class="composer">
+        <textarea id="messageInput" rows="1" maxlength="12000" placeholder="Habla con Gwen…" aria-label="Mensaje"></textarea>
+        <button id="micButton" class="circle mic" type="button" aria-label="Grabar nota de voz">
+          <span aria-hidden="true"></span>
+        </button>
+        <button id="sendButton" class="circle send" type="submit" aria-label="Enviar mensaje">↑</button>
+      </form>
+      <p class="hint">Enter para enviar · Shift + Enter para otra línea</p>
+    </section>
+  </main>
+
+  <dialog id="usageDialog">
+    <button id="closeUsage" class="dialog-close" aria-label="Cerrar">×</button>
+    <p class="eyebrow">Consumo diario</p><h2>Uso de hoy</h2>
+    <div id="usageDetails" class="usage-details"></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -38,6 +38,23 @@ pip install -e ".[dev]"
 Para obtener tu Telegram user ID puedes escribirle a `@userinfobot`. Gwen
 ignorará silenciosamente a cualquier otro usuario.
 
+## Interfaz web privada
+
+La interfaz web comparte conversación, recuerdos y límites con Telegram. Solo escucha
+en `127.0.0.1`, por lo que no queda expuesta a la red local ni a Internet.
+
+```powershell
+.\start-gwen-web.ps1
+```
+
+Luego abre `http://127.0.0.1:8765`. Para detenerla:
+
+```powershell
+.\stop-gwen-web.ps1
+```
+
+Permite escribir, grabar desde el micrófono, escuchar la respuesta, iniciar una
+conversación nueva y consultar el consumo diario. Las claves nunca llegan al navegador.
 ## Elegir la voz
 
 1. En ElevenLabs abre **Voices → Explore**.

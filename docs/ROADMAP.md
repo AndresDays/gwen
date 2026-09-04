@@ -7,6 +7,7 @@
 - Entrada y salida de audio con ElevenLabs.
 - Historial reciente, compactación persistente y recuerdos explícitos o naturales.
 - Límites diarios, fallbacks de proveedores y backups locales de SQLite.
+- Interfaz web local privada para texto y voz.
 - Contenedores para ejecución local y despliegue.
 
 ## Fase 2 — proactividad

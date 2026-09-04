@@ -5,6 +5,7 @@ __pycache__/
 *.db
 *.log
 .gwen.pid
+.gwen-web.pid
 backups/
 .pytest_cache/
 .ruff_cache/

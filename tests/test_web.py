@@ -1,0 +1,90 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+from fastapi.testclient import TestClient
+
+from gwen.config import Settings
+from gwen.database import Database
+from gwen.web import create_app
+
+
+def test_web_interface_serves_private_chat_and_state() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    database = Database(settings.database_url)
+    assistant = SimpleNamespace(
+        reply=AsyncMock(return_value="Hola desde Gwen."),
+        daily_token_limit=settings.daily_token_limit,
+    )
+    app = create_app(settings=settings, database=database, assistant=assistant, voice=None)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        home = client.get("/")
+        assert home.status_code == 200
+        assert "Tu espacio privado" in home.text
+
+        response = client.post("/api/chat", json={"message": "hola"})
+        assert response.status_code == 200
+        assert response.json() == {
+            "answer": "Hola desde Gwen.",
+            "audio": None,
+            "audio_type": None,
+        }
+
+        state = client.get("/api/state")
+        assert state.status_code == 200
+        assert state.json()["voice_enabled"] is False
+
+        assert client.post("/api/new").status_code == 204
+    assistant.reply.assert_awaited_once()
+
+
+def test_web_interface_rejects_untrusted_hosts() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    app = create_app(
+        settings=settings,
+        database=Database(settings.database_url),
+        assistant=SimpleNamespace(daily_token_limit=100_000),
+        voice=None,
+    )
+    with TestClient(app) as client:
+        assert client.get("/").status_code == 400
+
+
+def test_web_voice_rejects_empty_transcript_without_calling_claude() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    database = Database(settings.database_url)
+    assistant = SimpleNamespace(
+        reply=AsyncMock(return_value="Hola desde Gwen."),
+        daily_token_limit=settings.daily_token_limit,
+    )
+    voice = SimpleNamespace(transcribe=AsyncMock(return_value=""), synthesize=AsyncMock())
+    app = create_app(settings=settings, database=database, assistant=assistant, voice=voice)
+
+    with TestClient(app, base_url="http://localhost") as client:
+        response = client.post(
+            "/api/voice",
+            files={"audio": ("voice.webm", b"fake-audio", "audio/webm")},
+            data={"duration": "3"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "No entendí el audio, intenta de nuevo."
+    assistant.reply.assert_not_awaited()

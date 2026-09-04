@@ -79,7 +79,10 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
   caracteres de TTS, consultables con `/usage`.
 - Los fallos y rate limits se convierten en mensajes seguros sin filtrar detalles.
 - `backup-gwen.ps1` crea backups consistentes de SQLite con retención configurable.
-- Última validación conocida: 15 pruebas aprobadas y Ruff limpio.
+- Existe una interfaz web privada en `http://127.0.0.1:8765`, con texto, grabación
+  de voz, reproducción de TTS, historial compartido, `/new` visual y consumo.
+- Se inicia y detiene con `start-gwen-web.ps1` y `stop-gwen-web.ps1`.
+- Última validación conocida: 17 pruebas aprobadas y Ruff limpio.
 
 ## Incidente de seguridad resuelto
 
@@ -145,11 +148,11 @@ sin autorización explícita.
 
 ## Próximos pasos recomendados
 
-1. Hacer el primer commit; ya se confirmó que `.env`, `gwen.db` y logs no están
-   versionados.
-2. Recabar datos de iPhone/Mac/Xcode.
-3. Diseñar y construir el MVP nativo de voz continua.
-4. Después, trabajador local para Claude Code y monitor financiero.
+1. Probar y refinar la interfaz web local con uso cotidiano.
+2. Definir autenticación y hosting solo si se desea acceso fuera de esta computadora.
+3. Recabar datos de iPhone/Mac/Xcode.
+4. Diseñar y construir el MVP nativo de voz continua.
+5. Después, trabajador local para Claude Code y monitor financiero.
 
 ## Preferencias de colaboración
 
