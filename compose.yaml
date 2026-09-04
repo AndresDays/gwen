@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gwen
+      POSTGRES_USER: gwen
+      POSTGRES_PASSWORD: local-only
+    volumes:
+      - gwen_data:/var/lib/postgresql/data
+  gwen:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://gwen:local-only@db:5432/gwen
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  gwen_data:
+
