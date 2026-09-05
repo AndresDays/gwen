@@ -14,6 +14,17 @@ MUSIC_WORDS = (
     "album", "álbum", "playlist", "spotify", "sonando",
 )
 
+# Objetos que siguen a "pon/ponle" en frases que nunca son música.
+NOT_MUSIC = frozenset(
+    {
+        "atencion", "atención", "cuidado", "ganas", "empeno", "empeño", "orden",
+        "fin", "freno", "remedio", "limite", "límite", "pausa",
+        "alarma", "despertador", "recordatorio", "temporizador", "timer",
+        "cronometro", "cronómetro", "hora", "fecha", "nombre", "titulo", "título",
+        "precio", "mesa", "lavadora", "cafe", "café",
+    }
+)
+
 ANSWERS = {
     "pause": "Listo, la pausé.",
     "resume": "Listo, ya sigue sonando.",
@@ -65,6 +76,11 @@ def detect_spotify_request(message: str) -> SpotifyRequest | None:
             return SpotifyRequest("play", "", needs_favorite=True)
         if not query:
             return None
+        # "ponle atención", "pon una alarma": el verbo es el mismo, la intención no.
+        if not ("spotify" in lower or any(word in lower for word in MUSIC_WORDS)):
+            head = re.sub(r"^(?:la|el|los|las|un|una|unos|unas)\s+", "", query.lower())
+            if head.split(" ")[0].strip(" .,!?") in NOT_MUSIC:
+                return None
         return SpotifyRequest("play", query)
     return None
 

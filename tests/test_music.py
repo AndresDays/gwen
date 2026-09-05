@@ -24,6 +24,18 @@ def test_ignores_unrelated_messages():
     assert detect_spotify_request("pon ") is None
 
 
+def test_ignores_non_music_uses_of_poner():
+    assert detect_spotify_request("ponle atención a esto") is None
+    assert detect_spotify_request("pon una alarma a las 7") is None
+    assert detect_spotify_request("pon un recordatorio") is None
+    assert detect_spotify_request("pon la mesa") is None
+
+
+def test_keeps_titles_without_music_words():
+    request = detect_spotify_request("pon persiana americana de soda stereo")
+    assert request is not None and request.query == "persiana americana de soda stereo"
+
+
 def test_favorites_need_stored_memory():
     request = detect_spotify_request("pon algo de mis artistas favoritos")
     assert request is not None and request.needs_favorite
