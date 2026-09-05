@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Gwen
 
 Gwen es un asistente personal privado para Telegram, construido con Python. La
@@ -157,3 +158,6 @@ añadirán migraciones formales y cifrado de los datos almacenados.
 
 Consulta [docs/ROADMAP.md](docs/ROADMAP.md). Recordatorios, resúmenes y alertas
 proactivas están previstos, pero no se activan hasta definir horarios y fuentes.
+=======
+# gwen
+>>>>>>> 1b4705e (Initial commit)
