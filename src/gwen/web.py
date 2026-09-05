@@ -7,8 +7,6 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
-import random
-import re
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
@@ -54,6 +52,14 @@ from gwen.config import Settings, get_settings
 from gwen.database import Database
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
 from gwen.main import configure_logging
+from gwen.music import (
+    NO_FAVORITES,
+    detect_spotify_request,
+    favorite_artist,
+    spotify_answer,
+    spotify_failure,
+    wants_history,
+)
 from gwen.realtime import run_realtime_voice
 from gwen.repository import Repository
 from gwen.security import (
@@ -63,14 +69,6 @@ from gwen.security import (
     create_session,
     public_hostname,
     verify_password,
-)
-from gwen.music import (
-    NO_FAVORITES,
-    detect_spotify_request,
-    favorite_artist,
-    spotify_answer,
-    spotify_failure,
-    wants_history,
 )
 from gwen.spotify import SpotifyOAuth
 from gwen.voice import ElevenLabsVoice
@@ -142,6 +140,9 @@ def create_app(
     worker_config = Path("gwen-code-workspaces.json")
     if code_worker is None and worker_config.is_file():
         code_worker = ClaudeCodeWorker(worker_config)
+        if not code_worker.workspaces:
+            logger.warning("Sin workspaces válidos: las tareas de código quedan desactivadas.")
+            code_worker = None
     code_tasks = CodeTaskStore(Path(".gwen-code-task.json"))
     code_context = CodeContextStore(Path(".gwen-code-context.json"))
     spotify = (
@@ -386,7 +387,6 @@ def create_app(
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(payload: ChatRequest) -> ChatResponse:
         message = payload.message.strip()
-        lower_message = message.lower()
         spotify_history = bool(spotify and wants_history(message))
         music_request = detect_spotify_request(message) if spotify else None
         missing_favorites = False

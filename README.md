@@ -58,6 +58,27 @@ web transmite PCM a Scribe Realtime, muestra la transcripción parcial, recibe l
 de Claude por fragmentos y comienza a reproducir voz Flash por frases antes de que termine
 la respuesta completa. Puedes interrumpir a Gwen hablando. La grabación manual se conserva
 como respaldo y las claves nunca llegan al navegador.
+
+### En macOS o Linux
+
+Los scripts `.ps1` son solo lanzadores de Windows; el servidor es el mismo módulo:
+
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
+cp .env.example .env   # completa tus claves
+python -m gwen.web
+```
+
+Se detiene con Ctrl+C.
+
+## Proyectos para tareas de código
+
+Copia `gwen-code-workspaces.example.json` como `gwen-code-workspaces.json` y ajusta las
+rutas y comandos a esta máquina. El archivo no se versiona, porque cada equipo tiene sus
+propias rutas: en Windows `.venv\Scripts\python.exe` y `npm.cmd`; en macOS o Linux
+`.venv/bin/python` y `npm`. Los workspaces cuya ruta no exista se ignoran con un aviso, y
+si no queda ninguno válido Gwen arranca igual, sin tareas de código.
+
 ## Aplicación de escritorio
 
 Ejecuta `install-gwen-desktop.ps1` una vez para crear el acceso directo **Gwen**

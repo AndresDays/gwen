@@ -1,11 +1,14 @@
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _FILE_HEADER = re.compile(r"^(?:[A-Za-z]:)?[\\/]?[\w.@-]+(?:[\\/][\w.@ -]+)*\.[A-Za-z]+$")
 _ABSOLUTE_PATH = re.compile(r"^(?:[A-Za-z]:)?[\\/](?:[^\\/\s]+[\\/])+")
@@ -186,17 +189,25 @@ def commit_result_answer(result: dict[str, object]) -> str:
 class ClaudeCodeWorker:
     def __init__(self, config_path: Path, timeout_seconds: int = 2700) -> None:
         raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
-        self.workspaces = {
-            item["id"]: CodeWorkspace(
+        self.workspaces = {}
+        for item in raw["workspaces"]:
+            try:
+                path = Path(item["path"]).resolve(strict=True)
+            except OSError:
+                # Config compartida entre máquinas: ignoramos las rutas que aquí no existen.
+                logger.warning(
+                    "Workspace %s ignorado: la ruta %s no existe en esta máquina",
+                    item["id"], item["path"],
+                )
+                continue
+            self.workspaces[item["id"]] = CodeWorkspace(
                 id=item["id"],
                 label=item["label"],
-                path=Path(item["path"]).resolve(strict=True),
+                path=path,
                 checks=tuple(tuple(command) for command in item.get("checks", [])),
                 adopt_foreign_changes=bool(item.get("adopt_foreign_changes", False)),
                 timeout_seconds=item.get("timeout_seconds"),
             )
-            for item in raw["workspaces"]
-        }
         self.timeout_seconds = timeout_seconds
         self.state_path = config_path.parent / ".gwen-code-state.json"
         self._lock = asyncio.Lock()

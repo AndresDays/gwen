@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "Copia este archivo como gwen-code-workspaces.json y ajusta las rutas a esta máquina.",
+    "No se versiona: cada equipo tiene sus propias rutas y comandos.",
+    "Windows: 'C:\\\\Users\\\\tu-usuario\\\\proyecto', '.venv\\\\Scripts\\\\python.exe', 'npm.cmd'.",
+    "macOS o Linux: '/Users/tu-usuario/proyecto', '.venv/bin/python', 'npm'.",
+    "Los workspaces cuya ruta no exista aquí se ignoran con un aviso en el log."
+  ],
+  "workspaces": [
+    {
+      "id": "gwen",
+      "label": "Gwen",
+      "path": "/Users/tu-usuario/gwen",
+      "checks": [
+        [".venv/bin/python", "-m", "ruff", "check", "."],
+        [".venv/bin/python", "-m", "pytest"]
+      ]
+    },
+    {
+      "id": "ejemplo-node",
+      "label": "Proyecto Node",
+      "path": "/Users/tu-usuario/proyectos/ejemplo",
+      "checks": [
+        ["npm", "run", "lint"],
+        ["npm", "test", "--", "--runInBand"]
+      ],
+      "adopt_foreign_changes": true
+    }
+  ]
+}

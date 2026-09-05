@@ -19,3 +19,4 @@ build/
 .gwen-code-context.json
 .gwen-code-task.json
 .gwen-spotify.json
+gwen-code-workspaces.json

@@ -49,6 +49,9 @@ def test_history_detection():
 
 
 def test_split_request_separates_title_and_artist():
-    assert split_request("persiana americana de soda stereo") == ("persiana americana", "soda stereo")
+    assert split_request("persiana americana de soda stereo") == (
+        "persiana americana",
+        "soda stereo",
+    )
     assert split_request("una cancion de zoe") == ("", "zoe")
     assert split_request("persiana americana") == ("persiana americana", "")

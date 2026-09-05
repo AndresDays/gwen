@@ -34,7 +34,6 @@ from gwen.code_worker import (
 from gwen.config import Settings
 from gwen.database import Database
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
-from gwen.repository import Repository
 from gwen.music import (
     NO_FAVORITES,
     detect_spotify_request,
@@ -43,6 +42,7 @@ from gwen.music import (
     spotify_failure,
     wants_history,
 )
+from gwen.repository import Repository
 from gwen.spotify import SpotifyOAuth
 from gwen.voice import ElevenLabsVoice
 
@@ -316,7 +316,10 @@ async def run_realtime_voice(
             "error",
             fatal=True,
             code=type(error).__name__,
-            message="El dictado de ElevenLabs no está disponible; revisa los créditos de la cuenta.",
+            message=(
+                "El dictado de ElevenLabs no está disponible; "
+                "revisa los créditos de la cuenta."
+            ),
         )
         await websocket.close()
         return

@@ -146,7 +146,9 @@ class SpotifyOAuth:
             tracks.append(f"{track['name']} — {artists}")
         return tracks
 
-    async def _search(self, client: httpx.AsyncClient, headers: dict[str, str], term: str) -> list[dict]:
+    async def _search(
+        self, client: httpx.AsyncClient, headers: dict[str, str], term: str
+    ) -> list[dict]:
         found = await client.get(
             "https://api.spotify.com/v1/search",
             params={"q": term, "type": "track", "limit": 10},
@@ -155,7 +157,9 @@ class SpotifyOAuth:
         found.raise_for_status()
         return found.json().get("tracks", {}).get("items", [])
 
-    async def find_track(self, client: httpx.AsyncClient, headers: dict[str, str], query: str) -> dict:
+    async def find_track(
+        self, client: httpx.AsyncClient, headers: dict[str, str], query: str
+    ) -> dict:
         """Busca una canción a partir de una frase como "persiana americana de soda stereo"."""
         title, artist = split_request(query)
         terms: list[str] = []
