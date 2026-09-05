@@ -16,7 +16,7 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $powershellPath
 $shortcut.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcher`""
 $shortcut.WorkingDirectory = $projectRoot
-$shortcut.Description = "Gwen — asistente personal privada"
+$shortcut.Description = "Gwen - asistente personal privada"
 if ($edgePath) { $shortcut.IconLocation = "$edgePath,0" }
 $shortcut.Save()
 Write-Host "Gwen instalada en el escritorio."

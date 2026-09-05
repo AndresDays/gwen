@@ -93,7 +93,7 @@ Ruta actual del proyecto: `C:\Users\jadr7\gwen`.
   permanece como respaldo.
 - La web es una PWA instalable en iPhone; solo cachea recursos estáticos públicos. Mide
   latencia por etapa localmente y reconecta WebSocket con backoff al recuperar red o foco.
-- Última validación conocida: 33 pruebas aprobadas, Ruff y JavaScript limpios.
+- Última validación conocida: 36 pruebas aprobadas, Ruff y JavaScript limpios.
 
 ## Incidente de seguridad resuelto
 
@@ -165,16 +165,11 @@ local en una ventana independiente de Edge y crear el acceso directo de Windows.
 
 Claude Code 2.1.223 está instalado y autenticado con Claude Max. El trabajador
 autoriza exactamente `C:\Users\jadr7\gwen` y `C:\Programacion\californIA`,
-bloquea secretos y rechaza repositorios con cambios pendientes. Puede editar,
+bloquea secretos y permite acumular varios cambios dentro de una sesión protegida. Si detecta cambios externos distintos al lote conocido, se detiene antes de editar. Puede editar,
 ejecutar validaciones fijas y crear commits solo después de una confirmación
 explícita.
 
-El panel visual **Código** permanece disponible únicamente en localhost. Las
-órdenes habladas, en cambio, funcionan directamente desde el chat de voz normal
-tanto en escritorio como en el iPhone autenticado por Tailscale. No requieren
-otra contraseña dentro de la app: Gwen primero lee el plan y exige una segunda
-confirmación hablada antes de modificar archivos o crear un commit. Menciones
-ambiguas no activan programación. Preguntas explícitas como “¿puedes ver o revisar
+El panel visual **Código** se retiró; las órdenes se dan en el chat normal por texto o voz, tanto en escritorio como en el iPhone autenticado por Tailscale. No requieren otra contraseña dentro de la app. Gwen inicia directamente las órdenes explícitas y solo crea un commit cuando se pide expresamente. Menciones ambiguas no activan programación. Preguntas explícitas como “¿puedes ver o revisar
 el código de California?” usan Claude Code en modo de solo lectura y responden
 directamente, sin crear un plan de ejecución ni pedir confirmación. La PC debe
 permanecer encendida.

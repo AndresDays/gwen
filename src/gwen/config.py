@@ -32,10 +32,17 @@ class Settings(BaseSettings):
     backup_retention_days: int = Field(default=14, ge=1, le=365)
     daily_voice_seconds_limit: int = Field(default=900, ge=60)
     daily_tts_character_limit: int = Field(default=20_000, ge=100)
+    spotify_client_id: str | None = None
+    spotify_client_secret: str | None = None
+    spotify_redirect_uri: str = "http://127.0.0.1:8765/api/spotify/callback"
 
     @property
     def voice_enabled(self) -> bool:
         return bool(self.elevenlabs_api_key and self.elevenlabs_voice_id)
+
+    @property
+    def spotify_enabled(self) -> bool:
+        return bool(self.spotify_client_id and self.spotify_client_secret)
 
 
 @lru_cache

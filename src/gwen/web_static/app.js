@@ -8,14 +8,6 @@ const micButton = document.querySelector('#micButton');
 const recordingStatus = document.querySelector('#recordingStatus');
 const recordingTime = document.querySelector('#recordingTime');
 const usageDialog = document.querySelector('#usageDialog');
-const codeButton = document.querySelector('#codeButton');
-const codeDialog = document.querySelector('#codeDialog');
-const codeForm = document.querySelector('#codeForm');
-const codeWorkspace = document.querySelector('#codeWorkspace');
-const codeTask = document.querySelector('#codeTask');
-const codeResult = document.querySelector('#codeResult');
-const codeApproval = document.querySelector('#codeApproval');
-const codeCommit = document.querySelector('#codeCommit');
 const usageDetails = document.querySelector('#usageDetails');
 const toast = document.querySelector('#toast');
 let state = null;
@@ -25,9 +17,6 @@ const microphoneSelect = document.querySelector('#microphoneSelect');
 const inputLevel = document.querySelector('#inputLevel');
 const recordingLabel = document.querySelector('#recordingLabel');
 const sessionButton = document.querySelector('#sessionButton');
-const mobileVoiceDock = document.querySelector('#mobileVoiceDock');
-const headerActions = document.querySelector('.header-actions');
-const usageButton = document.querySelector('#usageButton');
 let continuousSession = null;
 let gwenAudio = null;
 let timer = null;
@@ -35,15 +24,11 @@ let timer = null;
 const LATENCY_KEY = 'gwen_voice_latency_v1';
 
 function syncStandaloneLayout() {
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const dockVoiceButton = standalone && window.matchMedia('(max-width: 640px)').matches;
-  document.documentElement.classList.toggle('standalone-app', standalone);
-  if (dockVoiceButton) mobileVoiceDock.append(sessionButton);
-  else if (sessionButton.parentElement !== headerActions) headerActions.insertBefore(sessionButton, usageButton);
+  document.documentElement.classList.toggle(
+    'standalone-app',
+    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+  );
 }
-
-syncStandaloneLayout();
-window.addEventListener('resize', syncStandaloneLayout);
 
 function latencySamples() {
   try { return JSON.parse(localStorage.getItem(LATENCY_KEY) || '[]'); }
@@ -52,7 +37,7 @@ function latencySamples() {
 
 function saveLatency(session) {
   const timing = session.timing;
-  if (!timing?.commit || !timing.transcript || !timing.delta || !timing.audio || !timing.playback || timing.saved) return;
+  if (!timing?.commit || !timing.playback || timing.saved) return;
   timing.saved = true;
   const sample = {
     stt: timing.transcript - timing.commit,
@@ -61,7 +46,7 @@ function saveLatency(session) {
     playback: timing.playback - timing.commit
   };
   const samples = [...latencySamples(), sample].slice(-20);
-  try { localStorage.setItem(LATENCY_KEY, JSON.stringify(samples)); } catch (_) {}
+  localStorage.setItem(LATENCY_KEY, JSON.stringify(samples));
 }
 
 function latencyRow() {
@@ -99,6 +84,41 @@ function addMessage(role, content) {
   return body;
 }
 
+function startCodeProgress(intent) {
+  const place = intent.workspace ? ` en ${intent.workspace}` : '';
+  const body = addMessage('assistant', `Iniciando tarea${place}…`);
+  body.parentElement.classList.add('working');
+  const labels = {
+    iniciada: `Tarea iniciada${place}.`,
+    trabajando: `Trabajando${place}.`,
+    validando: `Validando archivos y pruebas${place}.`,
+    terminada: `Tarea terminada${place}.`,
+    fallida: `La tarea falló${place}.`
+  };
+  const timer = window.setInterval(async () => {
+    try {
+      const status = await request('/api/code/status');
+      if (status.stage) body.textContent = labels[status.stage] || `Estado: ${status.stage}`;
+    } catch (_) {}
+  }, 700);
+  return {
+    stop() { window.clearInterval(timer); },
+    replace(text) {
+      window.clearInterval(timer);
+      body.parentElement.classList.remove('working');
+      body.textContent = text;
+      conversation.scrollTo({ top: conversation.scrollHeight, behavior: 'smooth' });
+    }
+  };
+}
+
+function startVoiceCodeProgress(session, progress) {
+  const action = progress.validating ? 'VALIDANDO' : 'TRABAJANDO';
+  const place = progress.workspace ? ` · ${progress.workspace.toUpperCase()}` : '';
+  recordingLabel.textContent = `GWEN ESTÁ ${action}${place}`;
+  session.codeProgress = true;
+}
+
 function setBusy(busy) {
   thinking.hidden = !busy;
   input.disabled = busy;
@@ -134,14 +154,24 @@ composer.addEventListener('submit', async event => {
   input.value = '';
   input.style.height = 'auto';
   setBusy(true);
+  let progress = null;
   try {
+    const intent = await request('/api/chat/intent', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
+    });
+    if (intent.coding) progress = startCodeProgress(intent);
     const result = await request('/api/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message })
     });
-    addMessage('assistant', result.answer);
-  } catch (error) { showToast(error.message); }
-  finally { setBusy(false); input.focus(); }
+    if (progress) progress.replace(result.answer);
+    else addMessage('assistant', result.answer);
+  } catch (error) {
+    if (progress) progress.replace(error.message);
+    else addMessage('assistant', error.message);
+  }
+  finally { progress?.stop(); setBusy(false); input.focus(); }
 });
 
 input.addEventListener('keydown', event => {
@@ -190,40 +220,6 @@ document.querySelector('#usageButton').addEventListener('click', async () => {
   } catch (error) { showToast(error.message); }
 });
 document.querySelector('#closeUsage').addEventListener('click', () => usageDialog.close());
-async function loadCodeWorkspaces() {
-  try {
-    const result = await request('/api/code/workspaces');
-    codeWorkspace.replaceChildren(...result.workspaces.map(item => new Option(item.label, item.id)));
-    codeButton.hidden = result.workspaces.length === 0;
-  } catch (_) { codeButton.hidden = true; }
-}
-codeButton.addEventListener('click', () => codeDialog.showModal());
-document.querySelector('#closeCode').addEventListener('click', () => codeDialog.close());
-codeForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  codeResult.hidden = false; codeResult.textContent = 'Claude está preparando el plan…';
-  codeApproval.hidden = true;
-  try {
-    const result = await request('/api/code/plan', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspace_id: codeWorkspace.value, task: codeTask.value })
-    });
-    codeResult.textContent = result.plan; codeApproval.hidden = false;
-  } catch (error) { codeResult.textContent = error.message; }
-});
-document.querySelector('#codeExecuteButton').addEventListener('click', async () => {
-  if (!window.confirm('Claude editará este proyecto y ejecutará sus pruebas. ¿Continuar?')) return;
-  codeApproval.hidden = true; codeResult.textContent = 'Claude está trabajando…';
-  try {
-    const result = await request('/api/code/execute', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspace_id: codeWorkspace.value, task: codeTask.value, commit: codeCommit.checked })
-    });
-    const status = result.committed ? 'Commit creado.' : 'Cambios listos sin commit.';
-    codeResult.textContent = `${result.answer}\n\n${status}\n${result.diff || ''}`;
-  } catch (error) { codeResult.textContent = error.message; }
-});
-loadCodeWorkspaces();
 
 async function refreshMicrophones() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -407,6 +403,8 @@ function handleRealtimeEvent(session, event) {
     if (session.timing && !session.timing.transcript) session.timing.transcript = performance.now();
     session.generation = event.generation;
     addMessage('user', `🎙️ ${event.text}`);
+  } else if (event.type === 'code_progress') {
+    startVoiceCodeProgress(session, event);
   } else if (event.type === 'answer_delta' && event.generation === session.generation) {
     if (session.timing && !session.timing.delta) session.timing.delta = performance.now();
     if (!session.answerBody) session.answerBody = addMessage('assistant', '');
@@ -421,12 +419,20 @@ function handleRealtimeEvent(session, event) {
     finishStreamingTurn(session);
   } else if (event.type === 'interrupted') {
     stopStreamingAudio(session);
+  } else if (event.type === 'voice_muted') {
+    showToast(event.message || 'Me quedé sin voz; te sigo respondiendo por texto.');
   } else if (event.type === 'error') {
     stopStreamingAudio(session);
     session.processing = false;
     setBusy(false);
-    recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS';
     showToast(event.message || 'La voz no está disponible ahora mismo.');
+    if (event.fatal) {
+      // Reintentar no sirve: el proveedor rechazó la sesión de dictado.
+      session.stopping = true;
+      recordingLabel.textContent = 'VOZ NO DISPONIBLE · USA EL CHAT DE TEXTO';
+      return;
+    }
+    recordingLabel.textContent = 'ESCUCHANDO · HABLA CUANDO QUIERAS';
   }
 }
 
@@ -567,7 +573,6 @@ async function startContinuousSession() {
 async function stopContinuousSession() {
   const session = continuousSession;
   if (!session) return;
-  session.stopping = true;
   continuousSession = null;
   stopStreamingAudio(session);
   if (session.socket.readyState === WebSocket.OPEN) {
@@ -605,5 +610,7 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 }
 navigator.mediaDevices?.addEventListener?.('devicechange', refreshMicrophones);
+window.matchMedia('(display-mode: standalone)').addEventListener?.('change', syncStandaloneLayout);
+syncStandaloneLayout();
 refreshMicrophones();
 loadState();

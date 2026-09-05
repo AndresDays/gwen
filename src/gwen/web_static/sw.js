@@ -1,7 +1,7 @@
-const CACHE = 'gwen-shell-v11';
+const CACHE = 'gwen-shell-v16';
 const ASSETS = [
-  '/static/styles.css?v=11',
-  '/static/app.js?v=11',
+  '/static/styles.css?v=13',
+  '/static/app.js?v=14',
   '/static/icon-192.png',
   '/static/icon-512.png'
 ];

@@ -15,3 +15,7 @@ dist/
 build/
 *.egg-info/
 .gwen-web-auth.json
+.gwen-code-state.json
+.gwen-code-context.json
+.gwen-code-task.json
+.gwen-spotify.json

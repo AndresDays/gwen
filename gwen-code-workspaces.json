@@ -5,8 +5,18 @@
       "label": "Gwen",
       "path": "C:\\Users\\jadr7\\gwen",
       "checks": [
-        [".venv\\Scripts\\python.exe", "-m", "ruff", "check", "."],
-        [".venv\\Scripts\\python.exe", "-m", "pytest"]
+        [
+          ".venv\\Scripts\\python.exe",
+          "-m",
+          "ruff",
+          "check",
+          "."
+        ],
+        [
+          ".venv\\Scripts\\python.exe",
+          "-m",
+          "pytest"
+        ]
       ]
     },
     {
@@ -14,9 +24,19 @@
       "label": "californIA",
       "path": "C:\\Programacion\\californIA",
       "checks": [
-        ["npm.cmd", "run", "lint"],
-        ["npm.cmd", "test", "--", "--runInBand"]
-      ]
+        [
+          "npm.cmd",
+          "run",
+          "lint"
+        ],
+        [
+          "npm.cmd",
+          "test",
+          "--",
+          "--runInBand"
+        ]
+      ],
+      "adopt_foreign_changes": true
     }
   ]
 }

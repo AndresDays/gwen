@@ -62,6 +62,20 @@ def test_remote_mode_requires_login_and_rejects_cross_site_writes() -> None:
         )
         assert response.status_code == 200
 
+        local_response = client.post(
+            "/api/chat",
+            json={"message": "hola"},
+            headers={"Origin": "http://127.0.0.1:8765"},
+        )
+        assert local_response.status_code == 200
+
+        hostile_response = client.post(
+            "/api/chat",
+            json={"message": "hola"},
+            headers={"Origin": "https://sitio-ajeno.example"},
+        )
+        assert hostile_response.status_code == 403
+
 
 def test_remote_mode_refuses_incomplete_or_non_https_configuration() -> None:
     settings = remote_settings()

@@ -91,6 +91,14 @@ class PrivateAccessMiddleware:
         self.secret = secret
         self.public_origin = public_origin.rstrip("/")
 
+    def origin_is_allowed(self, origin: str) -> bool:
+        normalized = origin.rstrip("/")
+        return normalized in {
+            self.public_origin,
+            "http://127.0.0.1:8765",
+            "http://localhost:8765",
+        }
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if not self.enabled or scope["type"] not in {"http", "websocket"}:
             await self.app(scope, receive, send)
@@ -102,9 +110,9 @@ class PrivateAccessMiddleware:
 
         headers = Headers(scope=scope)
         authenticated = verify_session(cookie_from_scope(scope), self.secret)
-        origin = headers.get("origin", "").rstrip("/")
+        origin = headers.get("origin", "")
         if scope["type"] == "websocket":
-            if not authenticated or origin != self.public_origin:
+            if not authenticated or not self.origin_is_allowed(origin):
                 await send({"type": "websocket.close", "code": 1008, "reason": "No autorizado"})
                 return
         elif not authenticated:
@@ -114,7 +122,9 @@ class PrivateAccessMiddleware:
                 response = RedirectResponse("/login", status_code=303)
             await response(scope, receive, send)
             return
-        elif scope.get("method") not in {"GET", "HEAD", "OPTIONS"} and origin != self.public_origin:
+        elif scope.get("method") not in {"GET", "HEAD", "OPTIONS"} and not self.origin_is_allowed(
+            origin
+        ):
             response = JSONResponse({"detail": "Origen no autorizado."}, status_code=403)
             await response(scope, receive, send)
             return

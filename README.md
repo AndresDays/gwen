@@ -63,16 +63,7 @@ como respaldo y las claves nunca llegan al navegador.
 Ejecuta `install-gwen-desktop.ps1` una vez para crear el acceso directo **Gwen**
 en el escritorio de Windows. Al abrirlo, inicia la interfaz local y la muestra en
 una ventana independiente de Microsoft Edge, sin pestañas ni barra del navegador.
-El botón **Código** solo aparece al abrir Gwen desde `localhost` en esta PC. Permite
-elegir un proyecto autorizado, pedir un plan a Claude Code y, tras confirmarlo,
-permitir ediciones. La opción de commit solo se ejecuta si el repositorio estaba
-limpio y las validaciones configuradas terminan correctamente. Los proyectos se
-definen explícitamente en `gwen-code-workspaces.json`; `.env` y secretos están
-bloqueados.
-Las órdenes habladas también funcionan directamente desde el chat normal del
-iPhone después del login privado habitual; no se pide otra contraseña. Gwen
-siempre presenta el plan y espera confirmación antes de editar o crear commits.
-La computadora debe permanecer encendida.
+Las órdenes de programación se dan directamente en el chat normal, por texto o voz, sin abrir un panel separado. Gwen puede trabajar únicamente en los proyectos definidos en `gwen-code-workspaces.json`; `.env` y secretos están bloqueados. Puede acumular varios cambios pendientes dentro de una sesión protegida. Solo crea un commit cuando se solicita expresamente y las validaciones configuradas terminan correctamente. También funciona desde el iPhone después del login privado habitual; no se pide otra contraseña dentro de la app. La computadora debe permanecer encendida.
 ## Acceso privado desde iPhone
 
 Gwen puede publicarse solo dentro de una red privada Tailscale, con HTTPS y sin abrir

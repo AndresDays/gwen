@@ -3,9 +3,12 @@ import logging
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
+import random
+import re
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
@@ -27,12 +30,26 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from gwen.assistant import GwenAssistant
+from gwen.code_tasks import CodeTaskStore
 from gwen.code_voice import (
+    CodeContextStore,
     code_commit_requested,
+    code_followup_task,
     code_request_is_read_only,
+    code_task_needs_diagnosis,
+    detect_adopt_request,
     detect_code_request,
+    detect_validation_request,
+    failed_checks,
 )
-from gwen.code_worker import ClaudeCodeWorker
+from gwen.code_worker import (
+    ClaudeCodeWorker,
+    CodeTaskTimeout,
+    WorkspaceHasForeignChanges,
+    code_result_answer,
+    commit_result_answer,
+    validation_result_answer,
+)
 from gwen.config import Settings, get_settings
 from gwen.database import Database
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
@@ -47,6 +64,15 @@ from gwen.security import (
     public_hostname,
     verify_password,
 )
+from gwen.music import (
+    NO_FAVORITES,
+    detect_spotify_request,
+    favorite_artist,
+    spotify_answer,
+    spotify_failure,
+    wants_history,
+)
+from gwen.spotify import SpotifyOAuth
 from gwen.voice import ElevenLabsVoice
 
 logger = logging.getLogger(__name__)
@@ -79,6 +105,7 @@ class CodeExecutionResponse(BaseModel):
     checks: list[str]
     committed: bool
     diff: str
+    changed: bool = True
 
 
 def normalized_audio_type(content_type: str | None) -> str:
@@ -115,6 +142,13 @@ def create_app(
     worker_config = Path("gwen-code-workspaces.json")
     if code_worker is None and worker_config.is_file():
         code_worker = ClaudeCodeWorker(worker_config)
+    code_tasks = CodeTaskStore(Path(".gwen-code-task.json"))
+    code_context = CodeContextStore(Path(".gwen-code-context.json"))
+    spotify = (
+        SpotifyOAuth(settings.spotify_client_id or "", settings.spotify_client_secret or "",
+                     settings.spotify_redirect_uri, Path(".gwen-spotify.json"))
+        if settings.spotify_enabled else None
+    )
     if settings.web_remote_enabled and not (
         settings.web_password_hash
         and settings.web_session_secret
@@ -248,7 +282,25 @@ def create_app(
                 "tts_character_limit": settings.daily_tts_character_limit,
             },
             "voice_enabled": voice is not None,
+            "spotify_enabled": spotify is not None,
+            "spotify_connected": bool(spotify and spotify.connected()),
         }
+
+    @app.get("/api/spotify/connect")
+    async def spotify_connect() -> RedirectResponse:
+        if spotify is None:
+            raise HTTPException(409, "Spotify no está configurado.")
+        return RedirectResponse(spotify.authorization_url())
+
+    @app.get("/api/spotify/callback")
+    async def spotify_callback(code: str, state: str) -> RedirectResponse:
+        if spotify is None:
+            raise HTTPException(409, "Spotify no está configurado.")
+        try:
+            await spotify.complete(code, state)
+        except (ValueError, httpx.HTTPError):
+            raise HTTPException(400, "No pude completar la autorización de Spotify.") from None
+        return RedirectResponse("/?spotify=connected", status_code=303)
 
     def local_code_worker(request: Request) -> ClaudeCodeWorker:
         if request.url.hostname not in {"127.0.0.1", "localhost", "testserver"}:
@@ -256,6 +308,15 @@ def create_app(
         if code_worker is None:
             raise HTTPException(503, "Claude Code no está configurado.")
         return code_worker
+
+    async def save_chat_exchange(message: str, answer: str) -> None:
+        async with database.session() as session:
+            repository = Repository(session)
+            await repository.add_message(settings.telegram_allowed_user_id, "user", message)
+            await repository.add_message(settings.telegram_allowed_user_id, "assistant", answer)
+            await repository.compact_messages(
+                settings.telegram_allowed_user_id, settings.history_limit
+            )
 
     @app.get("/api/code/workspaces")
     async def code_workspaces(request: Request) -> dict[str, object]:
@@ -286,45 +347,172 @@ def create_app(
             raise HTTPException(
                 409, "Claude Code no pudo ejecutar la tarea de forma segura."
             ) from None
+    @app.get("/api/code/status")
+    async def code_status() -> dict[str, object]:
+        return code_tasks.snapshot()
+
+
+    @app.post("/api/chat/intent")
+    async def chat_intent(payload: ChatRequest) -> dict[str, object]:
+        context = code_context.current()
+        validation = (
+            detect_validation_request(payload.message, context) if code_worker is not None else None
+        )
+        request = (
+            detect_code_request(payload.message, context)
+            if code_worker is not None and validation is None
+            else None
+        )
+        read_only = request is not None and code_request_is_read_only(request[1])
+        workspace_id = validation or (request[0] if request is not None else None)
+        label = None
+        if workspace_id is not None and code_worker is not None:
+            label = next(
+                (
+                    item["label"]
+                    for item in code_worker.public_workspaces()
+                    if item["id"] == workspace_id
+                ),
+                workspace_id,
+            )
+        return {
+            "coding": request is not None or validation is not None,
+            "read_only": read_only or validation is not None,
+            "acknowledge": validation is not None or (request is not None and not read_only),
+            "workspace": label,
+            "validating": validation is not None,
+        }
 
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(payload: ChatRequest) -> ChatResponse:
         message = payload.message.strip()
-        code_request = detect_code_request(message) if code_worker is not None else None
+        lower_message = message.lower()
+        spotify_history = bool(spotify and wants_history(message))
+        music_request = detect_spotify_request(message) if spotify else None
+        missing_favorites = False
+        if music_request is not None and music_request.needs_favorite:
+            async with database.session() as session:
+                memories = await Repository(session).memories(settings.telegram_allowed_user_id)
+            artist = favorite_artist([memory.content for memory in memories])
+            if artist:
+                music_request = replace(music_request, query=artist, needs_favorite=False)
+            else:
+                music_request, missing_favorites = None, True
+        spotify_action = music_request.action if music_request else None
+        spotify_query = music_request.query if music_request else ""
+        context = code_context.current()
+        validation_request = (
+            detect_validation_request(message, context) if code_worker is not None else None
+        )
+        code_request = (
+            detect_code_request(message, context)
+            if code_worker is not None and validation_request is None
+            else None
+        )
+        adopt_request = detect_adopt_request(message, context) if code_worker is not None else None
         try:
+            if spotify_action:
+                try:
+                    result = await spotify.control(spotify_action, spotify_query)  # type: ignore[union-attr]
+                except (ValueError, httpx.HTTPStatusError) as error:
+                    answer = spotify_failure(error)
+                    await save_chat_exchange(message, answer)
+                    return ChatResponse(answer=answer)
+                answer = spotify_answer(spotify_action, result)
+                await save_chat_exchange(message, answer)
+                return ChatResponse(answer=answer)
+            if missing_favorites:
+                await save_chat_exchange(message, NO_FAVORITES)
+                return ChatResponse(answer=NO_FAVORITES)
+            if spotify_history:
+                tracks = await spotify.recently_played()  # type: ignore[union-attr]
+                answer = (
+                    "Escuchaste recientemente: " + "; ".join(tracks)
+                    if tracks
+                    else "No encontré reproducciones recientes en Spotify."
+                )
+                await save_chat_exchange(message, answer)
+                return ChatResponse(answer=answer)
+            if code_worker is not None and adopt_request is not None:
+                await code_worker.adopt_current_changes(adopt_request)
+                code_context.remember(adopt_request, context.last_failures if context else ())
+                answer = (
+                    f"Listo, tomé los cambios actuales de {adopt_request} como punto de "
+                    "partida. Ya puedo seguir trabajando ahí."
+                )
+                await save_chat_exchange(message, answer)
+                return ChatResponse(answer=answer)
+            if code_worker is not None and validation_request is not None:
+                code_tasks.start(validation_request, "validar")
+                code_tasks.update("validando")
+                result = await code_worker.validate(validation_request)
+                code_context.remember(validation_request, failed_checks(result))
+                answer = validation_result_answer(result)
+                code_tasks.update(
+                    "terminada" if result["validation_passed"] else "fallida",
+                    checks=result["checks"],
+                )
+                await save_chat_exchange(message, answer)
+                return ChatResponse(answer=answer)
             if code_worker is not None and code_request is not None:
                 workspace_id, task = code_request
                 if code_request_is_read_only(task):
+                    code_tasks.start(workspace_id, "revisar")
+                    code_tasks.update("trabajando")
                     answer = await code_worker.inspect(workspace_id, task)
-                    return ChatResponse(answer=f"Sí, puedo revisar {workspace_id}. {answer}")
+                    code_context.remember(workspace_id, context.last_failures if context else ())
+                    answer = f"Sí, puedo revisar {workspace_id}. {answer}"
+                    code_tasks.update("terminada")
+                    await save_chat_exchange(message, answer)
+                    return ChatResponse(answer=answer)
                 wants_commit = code_commit_requested(task)
-                result = await code_worker.execute(workspace_id, task, commit=wants_commit)
-                if not result["validation_passed"]:
-                    return ChatResponse(
-                        answer=(
-                            "El cambio quedó hecho, pero algunas pruebas fallaron, "
-                            "así que no creé un commit."
-                        )
+                is_commit_only = wants_commit and len(task.split()) <= 8
+                code_tasks.start(workspace_id, "commit" if is_commit_only else "editar")
+                code_tasks.update("trabajando")
+                if is_commit_only:
+                    code_tasks.update("validando")
+                    result = await code_worker.commit(workspace_id)
+                    answer = commit_result_answer(result)
+                else:
+                    result = await code_worker.execute(
+                        workspace_id,
+                        code_followup_task(task, context),
+                        commit=wants_commit,
+                        diagnose=code_task_needs_diagnosis(task),
                     )
-                if result["committed"]:
-                    return ChatResponse(answer="Listo, ya está hecho y también creé el commit.")
-                return ChatResponse(
-                    answer=(
-                        "Listo, ya está hecho. Las pruebas pasaron correctamente. "
-                        "No hice commit porque no me lo pediste."
-                    )
+                    answer = code_result_answer(result)
+                code_context.remember(workspace_id, failed_checks(result))
+                code_tasks.update(
+                    "terminada" if result["validation_passed"] else "fallida",
+                    checks=result["checks"],
+                    files=result.get("files"),
+                    commit=result.get("commit"),
                 )
+                await save_chat_exchange(message, answer)
+                return ChatResponse(answer=answer)
             async with database.session() as session:
                 answer = await assistant.reply(
                     settings.telegram_allowed_user_id, message, Repository(session)
                 )
             return ChatResponse(answer=answer)
+        except WorkspaceHasForeignChanges as error:
+            answer = error.message()
+            code_tasks.update("fallida", error=answer)
+            await save_chat_exchange(message, answer)
+            return ChatResponse(answer=answer)
+        except CodeTaskTimeout as error:
+            answer = str(error)
+            code_tasks.update("fallida", error=answer)
+            await save_chat_exchange(message, answer)
+            return ChatResponse(answer=answer)
         except Exception as error:
-            if code_request is not None:
+            if code_request is not None or validation_request is not None:
                 logger.warning("Text code request failed (%s)", type(error).__name__)
+                code_tasks.update("fallida", error=type(error).__name__)
                 raise HTTPException(
                     409,
-                    "No pude iniciar el cambio. Revisa si el proyecto tiene cambios pendientes.",
+                    "No pude completar el cambio de forma segura. "
+                    "Revisa el registro de Gwen para ver el detalle.",
                 ) from None
             raise safe_error(error) from None
 
@@ -341,7 +529,14 @@ def create_app(
         try:
             voice_code_worker = code_worker
             await run_realtime_voice(
-                websocket, settings, database, assistant, voice, voice_code_worker
+                websocket,
+                settings,
+                database,
+                assistant,
+                voice,
+                voice_code_worker,
+                code_context,
+                spotify,
             )
         except WebSocketDisconnect:
             pass
