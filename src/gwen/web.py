@@ -28,6 +28,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from gwen.assistant import GwenAssistant
+<<<<<<< HEAD
+=======
+from gwen.calendar_actions import (
+    CAPABILITY,
+    CalendarAction,
+    CalendarResult,
+    plan_calendar,
+    result_message,
+)
+>>>>>>> 9a0ae23 (Calendar update)
 from gwen.code_tasks import CodeTaskStore
 from gwen.code_voice import (
     CodeContextStore,
@@ -69,6 +79,10 @@ from gwen.security import (
     create_session,
     public_hostname,
     verify_password,
+<<<<<<< HEAD
+=======
+    verify_session,
+>>>>>>> 9a0ae23 (Calendar update)
 )
 from gwen.spotify import SpotifyOAuth
 from gwen.voice import ElevenLabsVoice
@@ -86,6 +100,12 @@ class ChatResponse(BaseModel):
     transcript: str | None = None
     audio: str | None = None
     audio_type: str | None = None
+<<<<<<< HEAD
+=======
+    actions: list[CalendarAction] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+>>>>>>> 9a0ae23 (Calendar update)
 
 
 class CodeTaskRequest(BaseModel):
@@ -146,9 +166,14 @@ def create_app(
     code_tasks = CodeTaskStore(Path(".gwen-code-task.json"))
     code_context = CodeContextStore(Path(".gwen-code-context.json"))
     spotify = (
-        SpotifyOAuth(settings.spotify_client_id or "", settings.spotify_client_secret or "",
-                     settings.spotify_redirect_uri, Path(".gwen-spotify.json"))
-        if settings.spotify_enabled else None
+        SpotifyOAuth(
+            settings.spotify_client_id or "",
+            settings.spotify_client_secret or "",
+            settings.spotify_redirect_uri,
+            Path(".gwen-spotify.json"),
+        )
+        if settings.spotify_enabled
+        else None
     )
     if settings.web_remote_enabled and not (
         settings.web_password_hash
@@ -352,7 +377,6 @@ def create_app(
     async def code_status() -> dict[str, object]:
         return code_tasks.snapshot()
 
-
     @app.post("/api/chat/intent")
     async def chat_intent(payload: ChatRequest) -> dict[str, object]:
         context = code_context.current()
@@ -385,8 +409,23 @@ def create_app(
         }
 
     @app.post("/api/chat", response_model=ChatResponse)
-    async def chat(payload: ChatRequest) -> ChatResponse:
+    async def chat(payload: ChatRequest, request: Request) -> ChatResponse:
         message = payload.message.strip()
+        if request.headers.get("x-gwen-capabilities") == CAPABILITY:
+            require_calendar_session(request)
+            try:
+                async with database.session() as session:
+                    planned = await plan_calendar(
+                        message,
+                        request.headers.get("x-gwen-timezone", ""),
+                        assistant,
+                        Repository(session),
+                        settings.telegram_allowed_user_id,
+                    )
+                if planned is not None:
+                    return ChatResponse(answer=planned[0], actions=planned[1])
+            except Exception as error:
+                raise safe_error(error) from None
         spotify_history = bool(spotify and wants_history(message))
         music_request = detect_spotify_request(message) if spotify else None
         missing_favorites = False
@@ -549,9 +588,13 @@ def create_app(
 
     @app.post("/api/voice", response_model=ChatResponse)
     async def voice_chat(
+        request: Request,
         audio: Annotated[UploadFile, File()],
         duration: Annotated[int, Form(ge=0, le=600)] = 0,
     ) -> ChatResponse:
+        calendar_enabled = request.headers.get("x-gwen-capabilities") == CAPABILITY
+        if calendar_enabled:
+            require_calendar_session(request)
         if voice is None:
             raise HTTPException(409, "La voz no está configurada.")
         content = await audio.read(MAX_AUDIO_BYTES + 1)
@@ -579,11 +622,27 @@ def create_app(
                 await repository.add_usage(
                     settings.telegram_allowed_user_id, today, voice_seconds=duration
                 )
-                answer = await assistant.reply(
-                    settings.telegram_allowed_user_id, transcript, repository
+                planned = (
+                    await plan_calendar(
+                        transcript,
+                        request.headers.get("x-gwen-timezone", ""),
+                        assistant,
+                        repository,
+                        settings.telegram_allowed_user_id,
+                    )
+                    if calendar_enabled
+                    else None
+                )
+                actions = planned[1] if planned is not None else None
+                answer = (
+                    planned[0]
+                    if planned is not None
+                    else await assistant.reply(
+                        settings.telegram_allowed_user_id, transcript, repository
+                    )
                 )
                 if tts_characters + len(answer) > settings.daily_tts_character_limit:
-                    return ChatResponse(answer=answer)
+                    return ChatResponse(answer=answer, transcript=transcript, actions=actions)
                 spoken = await voice.synthesize(answer)
                 await repository.add_usage(
                     settings.telegram_allowed_user_id,
@@ -595,6 +654,7 @@ def create_app(
                 transcript=transcript,
                 audio=base64.b64encode(spoken).decode("ascii"),
                 audio_type="audio/mpeg",
+                actions=actions,
             )
         except HTTPException:
             raise
@@ -603,6 +663,40 @@ def create_app(
             raise HTTPException(503, "La voz no está disponible ahora mismo.") from None
         except Exception as error:
             raise safe_error(error) from None
+
+    def require_calendar_session(request: Request) -> None:
+        if not settings.web_remote_enabled:
+            raise HTTPException(403, "Calendario requiere acceso privado HTTPS configurado.")
+        if not verify_session(request.cookies.get(COOKIE_NAME), settings.web_session_secret):
+            raise HTTPException(401, "Inicia sesión para usar Calendario.")
+        if request.headers.get("origin", "").rstrip("/") != settings.web_public_origin.rstrip("/"):
+            raise HTTPException(403, "Origen no permitido.")
+
+    @app.post("/api/calendar/result", response_model=ChatResponse)
+    async def calendar_result(payload: CalendarResult, request: Request) -> ChatResponse:
+        require_calendar_session(request)
+        answer = result_message(payload)
+        response = ChatResponse(answer=answer)
+        async with database.session() as session:
+            repository = Repository(session)
+            await repository.add_message(settings.telegram_allowed_user_id, "assistant", answer)
+            await repository.compact_messages(
+                settings.telegram_allowed_user_id, settings.history_limit
+            )
+            if payload.speak and voice is not None:
+                today = datetime.now(ZoneInfo("America/Guatemala")).date()
+                _, used = await repository.voice_usage(settings.telegram_allowed_user_id, today)
+                if used + len(answer) <= settings.daily_tts_character_limit:
+                    try:
+                        spoken = await voice.synthesize(answer)
+                        await repository.add_usage(
+                            settings.telegram_allowed_user_id, today, tts_characters=len(answer)
+                        )
+                        response.audio = base64.b64encode(spoken).decode("ascii")
+                        response.audio_type = "audio/mpeg"
+                    except httpx.HTTPError:
+                        pass  # The save result remains valid even when speech is unavailable.
+        return response
 
     return app
 

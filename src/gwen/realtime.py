@@ -13,6 +13,7 @@ from fastapi import WebSocket
 from websockets.asyncio.client import connect
 
 from gwen.assistant import GwenAssistant
+from gwen.calendar_actions import CAPABILITY, plan_calendar
 from gwen.code_voice import (
     CodeContextStore,
     code_commit_requested,
@@ -176,6 +177,31 @@ async def run_realtime_voice(
         buffer = ""
         try:
             await send("transcript", generation=turn, text=transcript)
+            if (
+                settings.web_remote_enabled
+                and websocket.headers.get("x-gwen-capabilities") == CAPABILITY
+            ):
+                async with database.session() as session:
+                    planned = await plan_calendar(
+                        transcript,
+                        websocket.headers.get("x-gwen-timezone", ""),
+                        assistant,
+                        Repository(session),
+                        settings.telegram_allowed_user_id,
+                    )
+                if planned is not None:
+                    await send("answer_delta", generation=turn, text=planned[0])
+                    await queue.put(planned[0])
+                    await queue.put(None)
+                    await speaker
+                    await send(
+                        "calendar_actions",
+                        generation=turn,
+                        actions=[action.model_dump(mode="json") for action in planned[1]],
+                    )
+                    await send("answer_done", generation=turn)
+                    await send("turn_done", generation=turn)
+                    return
             code_answer: str | None = await music_answer(transcript)
             if code_answer is None and code_worker is not None:
                 context = code_context.current()
@@ -317,8 +343,12 @@ async def run_realtime_voice(
             fatal=True,
             code=type(error).__name__,
             message=(
+<<<<<<< HEAD
                 "El dictado de ElevenLabs no está disponible; "
                 "revisa los créditos de la cuenta."
+=======
+                "El dictado de ElevenLabs no está disponible; revisa los créditos de la cuenta."
+>>>>>>> 9a0ae23 (Calendar update)
             ),
         )
         await websocket.close()

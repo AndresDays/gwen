@@ -166,9 +166,13 @@ def test_pwa_assets_are_installable_without_caching_private_data() -> None:
         assert "syncStandaloneLayout" in script.text
         assert "unlockCodeButton" not in home.text
         assert "codeDialog" not in home.text
-        web_source = Path("src/gwen/web.py").read_text(encoding="utf-8")
+        web_source = (Path(__file__).resolve().parents[1] / "src/gwen/web.py").read_text(
+            encoding="utf-8"
+        )
         assert "voice_code_worker = code_worker" in web_source
-        voice_source = Path("src/gwen/realtime.py").read_text(encoding="utf-8")
+        voice_source = (Path(__file__).resolve().parents[1] / "src/gwen/realtime.py").read_text(
+            encoding="utf-8"
+        )
         assert "Sí, ya lo hago. Puede tardar varios minutos" in voice_source
         assert "startCodeProgress" in script.text
         assert "startVoiceCodeProgress" in script.text
