@@ -12,6 +12,7 @@ from gwen.assistant import GwenAssistant
 from gwen.database import Database
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
 from gwen.memory import is_safe_memory
+from gwen.reminders import in_reminder_timezone
 from gwen.repository import Repository
 from gwen.voice import ElevenLabsVoice
 
@@ -130,11 +131,11 @@ class GwenBot:
         await update.message.reply_text(message)
 
     async def deliver_due_reminders(self) -> None:
-        now = datetime.now(ZoneInfo("America/Guatemala"))
+        now = datetime.now(ZoneInfo("UTC"))
         async with self.database.session() as session:
             reminders = await Repository(session).claim_due_reminders(self.allowed_user_id, now)
         for reminder in reminders:
-            due = reminder.due_at.astimezone(ZoneInfo(reminder.timezone))
+            due = in_reminder_timezone(reminder.due_at, reminder.timezone)
             await self.application.bot.send_message(
                 chat_id=self.allowed_user_id,
                 text=f"Recordatorio: {reminder.content}\nProgramado para {due:%Y-%m-%d %H:%M}.",

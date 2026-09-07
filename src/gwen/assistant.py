@@ -13,7 +13,7 @@ from anthropic import (
 
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
 from gwen.memory import automatic_preference_request, explicit_memory_request
-from gwen.reminders import complete_reminder_time, parse_reminder_request
+from gwen.reminders import complete_reminder_time, in_reminder_timezone, parse_reminder_request
 from gwen.repository import Repository
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ class GwenAssistant:
                 reminder_request.due_at,
                 reminder_request.timezone,
             )
-            local_due = reminder.due_at.astimezone(ZoneInfo(reminder.timezone))
+            local_due = in_reminder_timezone(reminder.due_at, reminder.timezone)
             return await self.save_shortcut_turn(
                 user_id,
                 text,

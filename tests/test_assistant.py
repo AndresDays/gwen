@@ -57,7 +57,7 @@ async def test_assistant_creates_reminder_without_calling_provider() -> None:
         answer = await assistant.reply(
             42, "recuérdame pagar la renta mañana a las 09:00", repository
         )
-        assert answer.startswith("Listo. Te recordaré pagar la renta")
+        assert answer == "Listo. Te recordaré pagar la renta el 2026-09-08 a las 09:00."
         assert [item.content for item in await repository.upcoming_reminders(42)] == [
             "pagar la renta"
         ]

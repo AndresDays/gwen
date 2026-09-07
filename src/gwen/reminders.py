@@ -71,3 +71,11 @@ def complete_reminder_time(pending_text: str, time_text: str) -> ReminderRequest
     if not _TIME_ONLY_PATTERN.fullmatch(time_text):
         return None
     return parse_reminder_request(f"{pending_text.strip()} a las {time_text.strip()}")
+
+
+def as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def in_reminder_timezone(value: datetime, timezone: str) -> datetime:
+    return as_utc(value).astimezone(ZoneInfo(timezone))

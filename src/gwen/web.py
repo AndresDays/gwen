@@ -68,6 +68,7 @@ from gwen.music import (
     wants_history,
 )
 from gwen.realtime import run_realtime_voice
+from gwen.reminders import as_utc
 from gwen.repository import Repository
 from gwen.security import (
     COOKIE_NAME,
@@ -367,7 +368,7 @@ def create_app(
                 {
                     "id": item.id,
                     "content": item.content,
-                    "due_at": item.due_at.isoformat(),
+                    "due_at": as_utc(item.due_at).isoformat(),
                     "timezone": item.timezone,
                 }
                 for item in items
