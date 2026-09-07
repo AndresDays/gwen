@@ -7,7 +7,10 @@ if (-not $tailscale -and (Test-Path -LiteralPath "C:\Program Files\Tailscale\tai
 if (-not $tailscale) {
     throw "Tailscale no está instalado. Instálalo en esta PC y en el iPhone, inicia sesión en ambos y vuelve a ejecutar este script."
 }
-$status = & $tailscale.FullName status --json | ConvertFrom-Json
+$tailscalePath = $tailscale.Path
+if (-not $tailscalePath) { $tailscalePath = $tailscale.FullName }
+if (-not $tailscalePath) { throw "No pude localizar el ejecutable de Tailscale." }
+$status = & $tailscalePath status --json | ConvertFrom-Json
 $dnsName = ([string]$status.Self.DNSName).TrimEnd('.')
 if ($status.BackendState -ne "Running" -or -not $dnsName.EndsWith(".ts.net")) {
     throw "Esta PC todavía no está conectada correctamente a Tailscale."
@@ -29,7 +32,7 @@ $config = [ordered]@{
 }
 $configPath = Join-Path $projectRoot ".gwen-web-auth.json"
 $config | ConvertTo-Json | Set-Content -LiteralPath $configPath -Encoding utf8
-& $tailscale.FullName serve --bg 8765
+& $tailscalePath serve --bg 8765
 if ($LASTEXITCODE -ne 0) { throw "Tailscale Serve no pudo activarse." }
 & (Join-Path $projectRoot "stop-gwen-web.ps1")
 & (Join-Path $projectRoot "start-gwen-web.ps1")
