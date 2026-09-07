@@ -13,6 +13,7 @@ from anthropic import (
 
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
 from gwen.memory import automatic_preference_request, explicit_memory_request
+from gwen.reminders import parse_reminder_request
 from gwen.repository import Repository
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,19 @@ class GwenAssistant:
             await repository.add_memory(user_id, memory_request.content)
             return "Lo recordaré."
 
+        reminder_request = parse_reminder_request(text)
+        if reminder_request:
+            if reminder_request.needs_clarification:
+                return "¿A qué hora exacta quieres que te lo recuerde?"
+            reminder = await repository.add_reminder(
+                user_id,
+                reminder_request.content,
+                reminder_request.due_at,
+                reminder_request.timezone,
+            )
+            local_due = reminder.due_at.astimezone(ZoneInfo(reminder.timezone))
+            return f"Listo. Te recordaré {reminder.content} el {local_due:%Y-%m-%d a las %H:%M}."
+
         zone = ZoneInfo("America/Guatemala")
         today = datetime.now(zone).date()
         used_tokens = await repository.usage_tokens(user_id, today)
@@ -164,7 +178,7 @@ class GwenAssistant:
             raise InputTooLong
 
         memory_request = explicit_memory_request(text)
-        if memory_request:
+        if memory_request or parse_reminder_request(text):
             yield await self.reply(user_id, text, repository)
             return
 

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from io import BytesIO
@@ -34,7 +35,14 @@ class GwenBot:
         self.voice = voice
         self.daily_voice_seconds_limit = daily_voice_seconds_limit
         self.daily_tts_character_limit = daily_tts_character_limit
-        self.application = Application.builder().token(token).build()
+        self.reminder_task: asyncio.Task[None] | None = None
+        self.application = (
+            Application.builder()
+            .token(token)
+            .post_init(self.start_reminder_delivery)
+            .post_shutdown(self.stop_reminder_delivery)
+            .build()
+        )
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("remember", self.remember))
         self.application.add_handler(CommandHandler("memories", self.memories))
@@ -120,6 +128,37 @@ class GwenBot:
         else:
             message = f"Uso de hoy: {used:,} tokens. Límite diario desactivado."
         await update.message.reply_text(message)
+
+    async def deliver_due_reminders(self) -> None:
+        now = datetime.now(ZoneInfo("America/Guatemala"))
+        async with self.database.session() as session:
+            reminders = await Repository(session).claim_due_reminders(self.allowed_user_id, now)
+        for reminder in reminders:
+            due = reminder.due_at.astimezone(ZoneInfo(reminder.timezone))
+            await self.application.bot.send_message(
+                chat_id=self.allowed_user_id,
+                text=f"Recordatorio: {reminder.content}\nProgramado para {due:%Y-%m-%d %H:%M}.",
+            )
+
+    async def reminder_loop(self) -> None:
+        while True:
+            try:
+                await self.deliver_due_reminders()
+            except Exception as error:
+                logger.warning("Reminder delivery failed (%s)", type(error).__name__)
+            await asyncio.sleep(60)
+
+    async def start_reminder_delivery(self, application: Application) -> None:
+        self.reminder_task = asyncio.create_task(self.reminder_loop())
+
+    async def stop_reminder_delivery(self, application: Application) -> None:
+        if self.reminder_task:
+            self.reminder_task.cancel()
+            try:
+                await self.reminder_task
+            except asyncio.CancelledError:
+                pass
+            self.reminder_task = None
 
     async def assistant_answer(self, text: str, repository: Repository) -> str:
         try:

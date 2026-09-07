@@ -1,9 +1,9 @@
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gwen.models import ConversationState, Memory, Message, PersonalMemory, UsageDay
+from gwen.models import ConversationState, Memory, Message, PersonalMemory, Reminder, UsageDay
 
 
 class Repository:
@@ -100,6 +100,54 @@ class Repository:
         await self.session.execute(delete(Memory).where(Memory.user_id == user_id))
         await self.session.execute(delete(PersonalMemory).where(PersonalMemory.user_id == user_id))
         await self.session.commit()
+
+    async def add_reminder(
+        self, user_id: int, content: str, due_at: datetime, timezone: str
+    ) -> Reminder:
+        reminder = Reminder(
+            user_id=user_id, content=content.strip(), due_at=due_at, timezone=timezone
+        )
+        self.session.add(reminder)
+        await self.session.commit()
+        await self.session.refresh(reminder)
+        return reminder
+
+    async def upcoming_reminders(self, user_id: int) -> list[Reminder]:
+        query = (
+            select(Reminder)
+            .where(Reminder.user_id == user_id, Reminder.status == "pending")
+            .order_by(Reminder.due_at, Reminder.id)
+        )
+        return list((await self.session.scalars(query)).all())
+
+    async def claim_due_reminders(self, user_id: int, now: datetime) -> list[Reminder]:
+        query = (
+            update(Reminder)
+            .where(
+                Reminder.user_id == user_id,
+                Reminder.status == "pending",
+                Reminder.due_at <= now,
+            )
+            .values(status="delivered", delivered_at=now)
+            .returning(Reminder)
+            .execution_options(synchronize_session=False)
+        )
+        reminders = list((await self.session.scalars(query)).all())
+        await self.session.commit()
+        return reminders
+
+    async def cancel_reminder(self, user_id: int, reminder_id: int) -> bool:
+        result = await self.session.execute(
+            update(Reminder)
+            .where(
+                Reminder.user_id == user_id,
+                Reminder.id == reminder_id,
+                Reminder.status == "pending",
+            )
+            .values(status="cancelled")
+        )
+        await self.session.commit()
+        return bool(result.rowcount)
 
     async def conversation_summary(self, user_id: int) -> str:
         state = await self.session.get(ConversationState, user_id)

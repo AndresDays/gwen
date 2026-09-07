@@ -89,6 +89,25 @@ def test_memory_api_lists_and_clears_only_memories() -> None:
         assert client.delete("/api/memories").status_code == 204
 
 
+def test_reminder_api_lists_and_cancels_pending_items() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    app = create_app(
+        settings=settings,
+        database=Database(settings.database_url),
+        assistant=SimpleNamespace(daily_token_limit=100_000),
+        voice=None,
+    )
+    with TestClient(app, base_url="http://localhost") as client:
+        assert client.get("/api/reminders").json() == {"reminders": []}
+        assert client.delete("/api/reminders/1").status_code == 404
+
+
 def test_web_voice_rejects_empty_transcript_without_calling_claude() -> None:
     settings = Settings(
         _env_file=None,

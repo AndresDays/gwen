@@ -358,6 +358,31 @@ def create_app(
         if not deleted:
             raise HTTPException(404, "Recuerdo no encontrado.")
 
+    @app.get("/api/reminders")
+    async def reminders() -> dict[str, object]:
+        async with database.session() as session:
+            items = await Repository(session).upcoming_reminders(settings.telegram_allowed_user_id)
+        return {
+            "reminders": [
+                {
+                    "id": item.id,
+                    "content": item.content,
+                    "due_at": item.due_at.isoformat(),
+                    "timezone": item.timezone,
+                }
+                for item in items
+            ]
+        }
+
+    @app.delete("/api/reminders/{reminder_id}", status_code=204)
+    async def cancel_reminder(reminder_id: int) -> None:
+        async with database.session() as session:
+            cancelled = await Repository(session).cancel_reminder(
+                settings.telegram_allowed_user_id, reminder_id
+            )
+        if not cancelled:
+            raise HTTPException(404, "Recordatorio no encontrado.")
+
     @app.get("/api/spotify/connect")
     async def spotify_connect() -> RedirectResponse:
         if spotify is None:

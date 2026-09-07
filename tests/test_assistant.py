@@ -43,6 +43,28 @@ async def test_assistant_stores_natural_memory_without_calling_provider() -> Non
     await database.close()
 
 
+async def test_assistant_creates_reminder_without_calling_provider() -> None:
+    from unittest.mock import AsyncMock
+
+    from gwen.assistant import GwenAssistant
+    from gwen.repository import Repository
+
+    database = await _memory_repository()
+    assistant = GwenAssistant("test-key", "test-model", 10)
+    assistant.client = AsyncMock()
+    async with database.session() as session:
+        repository = Repository(session)
+        answer = await assistant.reply(
+            42, "recuérdame pagar la renta mañana a las 09:00", repository
+        )
+        assert answer.startswith("Listo. Te recordaré pagar la renta")
+        assert [item.content for item in await repository.upcoming_reminders(42)] == [
+            "pagar la renta"
+        ]
+        assistant.client.messages.create.assert_not_awaited()
+    await database.close()
+
+
 async def test_assistant_stores_only_safe_automatic_preferences() -> None:
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
