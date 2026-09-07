@@ -110,7 +110,7 @@ async def test_assistant_completes_pending_reminder_and_saves_shortcut_turns() -
     await database.close()
 
 
-async def test_assistant_stores_only_safe_automatic_preferences() -> None:
+async def test_assistant_stores_automatic_preferences_without_content_filtering() -> None:
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
@@ -134,7 +134,8 @@ async def test_assistant_stores_only_safe_automatic_preferences() -> None:
         await assistant.reply(42, "mi hermana Ana vive en Madrid", repository)
         await assistant.reply(42, "prefiero usar mi password secreto", repository)
         assert [item.content for item in await repository.personal_memories(42)] == [
-            "prefiero respuestas breves"
+            "prefiero respuestas breves",
+            "prefiero usar mi password secreto",
         ]
     await database.close()
 

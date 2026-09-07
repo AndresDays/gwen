@@ -152,11 +152,6 @@ class GwenAssistant:
 
         memory_request = explicit_memory_request(text)
         if memory_request:
-            if not memory_request.safe:
-                return await self.save_shortcut_turn(user_id, text, (
-                    "Eso parece información sensible, así que no la guardaré. "
-                    "Mejor mantén contraseñas, tokens y datos bancarios fuera de Gwen."
-                ), repository)
             await repository.add_memory(user_id, memory_request.content)
             return await self.save_shortcut_turn(user_id, text, "Lo recordaré.", repository)
 

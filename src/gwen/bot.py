@@ -11,7 +11,6 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 from gwen.assistant import GwenAssistant
 from gwen.database import Database
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
-from gwen.memory import is_safe_memory
 from gwen.reminders import in_reminder_timezone
 from gwen.repository import Repository
 from gwen.voice import ElevenLabsVoice
@@ -70,11 +69,6 @@ class GwenBot:
         content = " ".join(context.args).strip()
         if not content:
             await update.message.reply_text("Dime qué recordar: /remember <dato>")
-            return
-        if not is_safe_memory(content):
-            await update.message.reply_text(
-                "Eso parece información sensible, así que no la guardaré."
-            )
             return
         async with self.database.session() as session:
             await Repository(session).add_memory(self.allowed_user_id, content)
