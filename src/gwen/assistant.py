@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
@@ -100,6 +101,51 @@ class GwenAssistant:
             return None
         return complete_reminder_time(history[-2].content, text)
 
+    async def reminder_messages(self, content: str, due_local: datetime) -> tuple[str, str]:
+        fallback = (
+            f"Listo. Ya dejé ese recordatorio para las {due_local:%H:%M}.",
+            f"Te recuerdo: {content}.",
+        )
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=120,
+                system=(
+                    "Redacta dos mensajes breves y naturales en español para Gwen, una asistente "
+                    "privada. Devuelve únicamente JSON válido con las claves acknowledgement y "
+                    "delivery. "
+                    "No cambies la tarea ni la hora, no agregues explicaciones ni Markdown."
+                ),
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Tarea: {content}\nHora local: {due_local:%Y-%m-%d %H:%M}\n"
+                            "acknowledgement confirma que quedó programado. "
+                            "delivery es el aviso al momento de recordar."
+                        ),
+                    }
+                ],
+            )
+            raw = "".join(block.text for block in response.content if block.type == "text")
+            parsed = json.loads(raw)
+            acknowledgement = str(parsed["acknowledgement"]).strip()
+            delivery = str(parsed["delivery"]).strip()
+            if not acknowledgement or not delivery:
+                return fallback
+            if max(len(acknowledgement), len(delivery)) > 280:
+                return fallback
+            return acknowledgement, delivery
+        except (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ):
+            return fallback
+
     async def reply(self, user_id: int, text: str, repository: Repository) -> str:
         if len(text) > self.max_input_chars:
             raise InputTooLong
@@ -122,17 +168,21 @@ class GwenAssistant:
                 return await self.save_shortcut_turn(
                     user_id, text, "¿A qué hora exacta quieres que te lo recuerde?", repository
                 )
-            reminder = await repository.add_reminder(
+            local_due = in_reminder_timezone(reminder_request.due_at, reminder_request.timezone)
+            acknowledgement, delivery = await self.reminder_messages(
+                reminder_request.content, local_due
+            )
+            await repository.add_reminder(
                 user_id,
                 reminder_request.content,
                 reminder_request.due_at,
                 reminder_request.timezone,
+                delivery,
             )
-            local_due = in_reminder_timezone(reminder.due_at, reminder.timezone)
             return await self.save_shortcut_turn(
                 user_id,
                 text,
-                f"Listo. Te recordaré {reminder.content} el {local_due:%Y-%m-%d a las %H:%M}.",
+                acknowledgement,
                 repository,
             )
 

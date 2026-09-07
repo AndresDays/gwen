@@ -46,6 +46,7 @@ class Reminder(Base):
     content: Mapped[str] = mapped_column(Text)
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     timezone: Mapped[str] = mapped_column(String(64))
+    delivery_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

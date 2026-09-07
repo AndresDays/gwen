@@ -138,7 +138,8 @@ class GwenBot:
             due = in_reminder_timezone(reminder.due_at, reminder.timezone)
             await self.application.bot.send_message(
                 chat_id=self.allowed_user_id,
-                text=f"Recordatorio: {reminder.content}\nProgramado para {due:%Y-%m-%d %H:%M}.",
+                text=reminder.delivery_text
+                or f"Te recuerdo: {reminder.content}. Programado para {due:%Y-%m-%d %H:%M}.",
             )
 
     async def reminder_loop(self) -> None:

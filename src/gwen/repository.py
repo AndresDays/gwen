@@ -102,10 +102,14 @@ class Repository:
         await self.session.commit()
 
     async def add_reminder(
-        self, user_id: int, content: str, due_at: datetime, timezone: str
+        self, user_id: int, content: str, due_at: datetime, timezone: str, delivery_text: str
     ) -> Reminder:
         reminder = Reminder(
-            user_id=user_id, content=content.strip(), due_at=due_at, timezone=timezone
+            user_id=user_id,
+            content=content.strip(),
+            due_at=due_at,
+            timezone=timezone,
+            delivery_text=delivery_text.strip(),
         )
         self.session.add(reminder)
         await self.session.commit()

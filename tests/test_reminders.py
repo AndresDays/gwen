@@ -47,7 +47,14 @@ async def test_reminder_lifecycle_claims_due_item_only_once() -> None:
     due_at = datetime(2026, 9, 7, 15, 0, tzinfo=UTC)
     async with database.session() as session:
         repository = Repository(session)
-        created = await repository.add_reminder(42, "pagar la renta", due_at, "America/Guatemala")
+        created = await repository.add_reminder(
+            42,
+            "pagar la renta",
+            due_at,
+            "America/Guatemala",
+            "Junior, te recuerdo pagar la renta.",
+        )
+        assert created.delivery_text == "Junior, te recuerdo pagar la renta."
         assert [item.id for item in await repository.upcoming_reminders(42)] == [created.id]
         claimed = await repository.claim_due_reminders(42, due_at)
         assert [item.id for item in claimed] == [created.id]

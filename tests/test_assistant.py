@@ -44,6 +44,7 @@ async def test_assistant_stores_natural_memory_without_calling_provider() -> Non
 
 
 async def test_assistant_creates_reminder_without_calling_provider() -> None:
+    from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
     from gwen.assistant import GwenAssistant
@@ -51,17 +52,32 @@ async def test_assistant_creates_reminder_without_calling_provider() -> None:
 
     database = await _memory_repository()
     assistant = GwenAssistant("test-key", "test-model", 10)
-    assistant.client = AsyncMock()
+    assistant.client.messages.create = AsyncMock(
+        return_value=SimpleNamespace(
+            content=[
+                SimpleNamespace(
+                    type="text",
+                    text=(
+                        '{"acknowledgement":"Listo, Junior. Ya dejé ese recordatorio '
+                        'para las 09:00.","delivery":"Junior, te recuerdo pagar la renta."}'
+                    ),
+                )
+            ]
+        )
+    )
     async with database.session() as session:
         repository = Repository(session)
         answer = await assistant.reply(
             42, "recuérdame pagar la renta mañana a las 09:00", repository
         )
-        assert answer == "Listo. Te recordaré pagar la renta el 2026-09-08 a las 09:00."
+        assert answer == "Listo, Junior. Ya dejé ese recordatorio para las 09:00."
         assert [item.content for item in await repository.upcoming_reminders(42)] == [
             "pagar la renta"
         ]
-        assistant.client.messages.create.assert_not_awaited()
+        assert (await repository.upcoming_reminders(42))[0].delivery_text == (
+            "Junior, te recuerdo pagar la renta."
+        )
+        assistant.client.messages.create.assert_awaited_once()
     await database.close()
 
 
@@ -80,7 +96,7 @@ async def test_assistant_completes_pending_reminder_and_saves_shortcut_turns() -
             "¿A qué hora exacta quieres que te lo recuerde?"
         )
         answer = await assistant.reply(42, "1:02 am", repository)
-        assert answer.startswith("Listo. Te recordaré probar recordatorios")
+        assert answer == "Listo. Ya dejé ese recordatorio para las 01:02."
         assert [item.content for item in await repository.upcoming_reminders(42)] == [
             "probar recordatorios"
         ]
@@ -90,7 +106,7 @@ async def test_assistant_completes_pending_reminder_and_saves_shortcut_turns() -
             "1:02 am",
             answer,
         ]
-        assistant.client.messages.create.assert_not_awaited()
+        assistant.client.messages.create.assert_awaited_once()
     await database.close()
 
 

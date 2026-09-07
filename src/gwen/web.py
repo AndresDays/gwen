@@ -370,6 +370,7 @@ def create_app(
                     "content": item.content,
                     "due_at": as_utc(item.due_at).isoformat(),
                     "timezone": item.timezone,
+                    "delivery_text": item.delivery_text or f"Te recuerdo: {item.content}.",
                 }
                 for item in items
             ]
