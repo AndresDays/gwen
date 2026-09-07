@@ -65,6 +65,35 @@ async def test_assistant_creates_reminder_without_calling_provider() -> None:
     await database.close()
 
 
+async def test_assistant_completes_pending_reminder_and_saves_shortcut_turns() -> None:
+    from unittest.mock import AsyncMock
+
+    from gwen.assistant import GwenAssistant
+    from gwen.repository import Repository
+
+    database = await _memory_repository()
+    assistant = GwenAssistant("test-key", "test-model", 10)
+    assistant.client = AsyncMock()
+    async with database.session() as session:
+        repository = Repository(session)
+        assert await assistant.reply(42, "recuérdame probar recordatorios mañana", repository) == (
+            "¿A qué hora exacta quieres que te lo recuerde?"
+        )
+        answer = await assistant.reply(42, "1:02 am", repository)
+        assert answer.startswith("Listo. Te recordaré probar recordatorios")
+        assert [item.content for item in await repository.upcoming_reminders(42)] == [
+            "probar recordatorios"
+        ]
+        assert [item.content for item in await repository.recent_messages(42, 10)] == [
+            "recuérdame probar recordatorios mañana",
+            "¿A qué hora exacta quieres que te lo recuerde?",
+            "1:02 am",
+            answer,
+        ]
+        assistant.client.messages.create.assert_not_awaited()
+    await database.close()
+
+
 async def test_assistant_stores_only_safe_automatic_preferences() -> None:
     from types import SimpleNamespace
     from unittest.mock import AsyncMock

@@ -13,7 +13,7 @@ from anthropic import (
 
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
 from gwen.memory import automatic_preference_request, explicit_memory_request
-from gwen.reminders import parse_reminder_request
+from gwen.reminders import complete_reminder_time, parse_reminder_request
 from gwen.repository import Repository
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,23 @@ class GwenAssistant:
         self.daily_token_limit = daily_token_limit
         self.daily_token_limit_enabled = daily_token_limit_enabled
 
+    async def save_shortcut_turn(
+        self, user_id: int, text: str, answer: str, repository: Repository
+    ) -> str:
+        await repository.add_message(user_id, "user", text)
+        await repository.add_message(user_id, "assistant", answer)
+        return answer
+
+    async def pending_reminder_request(
+        self, user_id: int, text: str, repository: Repository
+    ):
+        history = await repository.recent_messages(user_id, 2)
+        if len(history) != 2 or history[-1].role != "assistant" or history[-2].role != "user":
+            return None
+        if history[-1].content != "¿A qué hora exacta quieres que te lo recuerde?":
+            return None
+        return complete_reminder_time(history[-2].content, text)
+
     async def reply(self, user_id: int, text: str, repository: Repository) -> str:
         if len(text) > self.max_input_chars:
             raise InputTooLong
@@ -90,17 +107,21 @@ class GwenAssistant:
         memory_request = explicit_memory_request(text)
         if memory_request:
             if not memory_request.safe:
-                return (
+                return await self.save_shortcut_turn(user_id, text, (
                     "Eso parece información sensible, así que no la guardaré. "
                     "Mejor mantén contraseñas, tokens y datos bancarios fuera de Gwen."
-                )
+                ), repository)
             await repository.add_memory(user_id, memory_request.content)
-            return "Lo recordaré."
+            return await self.save_shortcut_turn(user_id, text, "Lo recordaré.", repository)
 
-        reminder_request = parse_reminder_request(text)
+        reminder_request = parse_reminder_request(text) or await self.pending_reminder_request(
+            user_id, text, repository
+        )
         if reminder_request:
             if reminder_request.needs_clarification:
-                return "¿A qué hora exacta quieres que te lo recuerde?"
+                return await self.save_shortcut_turn(
+                    user_id, text, "¿A qué hora exacta quieres que te lo recuerde?", repository
+                )
             reminder = await repository.add_reminder(
                 user_id,
                 reminder_request.content,
@@ -108,7 +129,12 @@ class GwenAssistant:
                 reminder_request.timezone,
             )
             local_due = reminder.due_at.astimezone(ZoneInfo(reminder.timezone))
-            return f"Listo. Te recordaré {reminder.content} el {local_due:%Y-%m-%d a las %H:%M}."
+            return await self.save_shortcut_turn(
+                user_id,
+                text,
+                f"Listo. Te recordaré {reminder.content} el {local_due:%Y-%m-%d a las %H:%M}.",
+                repository,
+            )
 
         zone = ZoneInfo("America/Guatemala")
         today = datetime.now(zone).date()

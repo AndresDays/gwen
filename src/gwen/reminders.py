@@ -10,6 +10,9 @@ _REMINDER_PATTERN = re.compile(
     r"(?:a\s+las\s+)?(?P<time>\d{1,2}:\d{2})(?:\s*(?P<meridiem>a\.?m\.?|p\.?m\.?))?\s*$",
     re.IGNORECASE,
 )
+_TIME_ONLY_PATTERN = re.compile(
+    r"^\s*\d{1,2}:\d{2}(?:\s*(?:a\.?m\.?|p\.?m\.?))?\s*$", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -62,3 +65,9 @@ def parse_reminder_request(text: str, now: datetime | None = None) -> ReminderRe
     return ReminderRequest(
         content=match.group("content").strip(), due_at=due_local.astimezone(UTC)
     )
+
+
+def complete_reminder_time(pending_text: str, time_text: str) -> ReminderRequest | None:
+    if not _TIME_ONLY_PATTERN.fullmatch(time_text):
+        return None
+    return parse_reminder_request(f"{pending_text.strip()} a las {time_text.strip()}")
