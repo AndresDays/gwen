@@ -7,7 +7,7 @@ TIMEZONE = "America/Guatemala"
 _REMINDER_PREFIX = re.compile(r"^\s*(?:recuérdame|recuerdame)\s+", re.IGNORECASE)
 _REMINDER_PATTERN = re.compile(
     r"^(?P<content>.+?)\s+(?:(?:el\s+)?(?P<day>hoy|mañana|\d{4}-\d{2}-\d{2})\s+)?"
-    r"(?:a\s+las\s+)?(?P<time>\d{1,2}:\d{2})\s*$",
+    r"(?:a\s+las\s+)?(?P<time>\d{1,2}:\d{2})(?:\s*(?P<meridiem>a\.?m\.?|p\.?m\.?))?\s*$",
     re.IGNORECASE,
 )
 
@@ -46,6 +46,14 @@ def parse_reminder_request(text: str, now: datetime | None = None) -> ReminderRe
             return ReminderRequest(content=reminder_text, due_at=None)
     try:
         hour, minute = (int(value) for value in match.group("time").split(":"))
+        meridiem = match.group("meridiem")
+        if meridiem:
+            if not 1 <= hour <= 12:
+                return ReminderRequest(content=reminder_text, due_at=None)
+            if meridiem.casefold().startswith("a"):
+                hour %= 12
+            elif hour != 12:
+                hour += 12
         due_local = datetime(due_date.year, due_date.month, due_date.day, hour, minute, tzinfo=zone)
     except ValueError:
         return ReminderRequest(content=reminder_text, due_at=None)

@@ -19,6 +19,20 @@ def test_parse_relative_reminder_in_guatemala_time() -> None:
     assert request.timezone == "America/Guatemala"
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("recuérdame probar recordatorios hoy a las 12:57 am", (2026, 9, 7, 6, 57)),
+        ("recuérdame comer hoy a las 12:00 pm", (2026, 9, 7, 18, 0)),
+    ],
+)
+def test_parse_12_hour_reminder_time(text: str, expected: tuple[int, int, int, int, int]) -> None:
+    request = parse_reminder_request(text, now=datetime(2026, 9, 7, 6, 30, tzinfo=UTC))
+
+    assert request is not None
+    assert request.due_at == datetime(*expected, tzinfo=UTC)
+
+
 def test_reminder_phrase_without_time_requires_clarification() -> None:
     request = parse_reminder_request("recuérdame pagar la renta mañana")
 
