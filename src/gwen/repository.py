@@ -3,7 +3,7 @@ from datetime import date
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gwen.models import ConversationState, Memory, Message, UsageDay
+from gwen.models import ConversationState, Memory, Message, PersonalMemory, UsageDay
 
 
 class Repository:
@@ -44,6 +44,33 @@ class Repository:
         query = select(Memory).where(Memory.user_id == user_id).order_by(Memory.id)
         return list((await self.session.scalars(query)).all())
 
+    async def add_personal_memory(
+        self, user_id: int, content: str, category: str, source: str
+    ) -> PersonalMemory:
+        existing = await self.personal_memories(user_id)
+        normalized = content.strip().casefold()
+        for memory in existing:
+            if memory.content.casefold() == normalized:
+                return memory
+        memory = PersonalMemory(
+            user_id=user_id,
+            content=content.strip(),
+            category=category,
+            source=source,
+        )
+        self.session.add(memory)
+        await self.session.commit()
+        await self.session.refresh(memory)
+        return memory
+
+    async def personal_memories(self, user_id: int) -> list[PersonalMemory]:
+        query = (
+            select(PersonalMemory)
+            .where(PersonalMemory.user_id == user_id)
+            .order_by(PersonalMemory.id)
+        )
+        return list((await self.session.scalars(query)).all())
+
     async def forget_matching(self, user_id: int, text: str) -> int:
         query = delete(Memory).where(
             Memory.user_id == user_id,
@@ -52,6 +79,27 @@ class Repository:
         result = await self.session.execute(query)
         await self.session.commit()
         return result.rowcount or 0  # type: ignore[attr-defined]
+
+    async def delete_memory(self, user_id: int, memory_id: int) -> bool:
+        result = await self.session.execute(
+            delete(Memory).where(Memory.user_id == user_id, Memory.id == memory_id)
+        )
+        await self.session.commit()
+        return bool(result.rowcount)
+
+    async def delete_personal_memory(self, user_id: int, memory_id: int) -> bool:
+        result = await self.session.execute(
+            delete(PersonalMemory).where(
+                PersonalMemory.user_id == user_id, PersonalMemory.id == memory_id
+            )
+        )
+        await self.session.commit()
+        return bool(result.rowcount)
+
+    async def clear_memories(self, user_id: int) -> None:
+        await self.session.execute(delete(Memory).where(Memory.user_id == user_id))
+        await self.session.execute(delete(PersonalMemory).where(PersonalMemory.user_id == user_id))
+        await self.session.commit()
 
     async def conversation_summary(self, user_id: int) -> str:
         state = await self.session.get(ConversationState, user_id)

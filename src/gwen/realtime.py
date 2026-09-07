@@ -343,12 +343,8 @@ async def run_realtime_voice(
             fatal=True,
             code=type(error).__name__,
             message=(
-<<<<<<< HEAD
                 "El dictado de ElevenLabs no está disponible; "
                 "revisa los créditos de la cuenta."
-=======
-                "El dictado de ElevenLabs no está disponible; revisa los créditos de la cuenta."
->>>>>>> 9a0ae23 (Calendar update)
             ),
         )
         await websocket.close()

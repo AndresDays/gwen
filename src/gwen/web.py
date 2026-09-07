@@ -28,8 +28,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from gwen.assistant import GwenAssistant
-<<<<<<< HEAD
-=======
 from gwen.calendar_actions import (
     CAPABILITY,
     CalendarAction,
@@ -37,7 +35,6 @@ from gwen.calendar_actions import (
     plan_calendar,
     result_message,
 )
->>>>>>> 9a0ae23 (Calendar update)
 from gwen.code_tasks import CodeTaskStore
 from gwen.code_voice import (
     CodeContextStore,
@@ -79,10 +76,7 @@ from gwen.security import (
     create_session,
     public_hostname,
     verify_password,
-<<<<<<< HEAD
-=======
     verify_session,
->>>>>>> 9a0ae23 (Calendar update)
 )
 from gwen.spotify import SpotifyOAuth
 from gwen.voice import ElevenLabsVoice
@@ -100,12 +94,9 @@ class ChatResponse(BaseModel):
     transcript: str | None = None
     audio: str | None = None
     audio_type: str | None = None
-<<<<<<< HEAD
-=======
     actions: list[CalendarAction] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
->>>>>>> 9a0ae23 (Calendar update)
 
 
 class CodeTaskRequest(BaseModel):
@@ -311,6 +302,61 @@ def create_app(
             "spotify_enabled": spotify is not None,
             "spotify_connected": bool(spotify and spotify.connected()),
         }
+
+    @app.get("/api/memories")
+    async def memories() -> dict[str, object]:
+        async with database.session() as session:
+            repository = Repository(session)
+            explicit = await repository.memories(settings.telegram_allowed_user_id)
+            automatic = await repository.personal_memories(settings.telegram_allowed_user_id)
+        return {
+            "memories": [
+                {
+                    "id": f"explicit:{item.id}",
+                    "content": item.content,
+                    "category": "explicit",
+                    "source": "explicit",
+                    "created_at": item.created_at.isoformat(),
+                }
+                for item in explicit
+            ]
+            + [
+                {
+                    "id": f"automatic:{item.id}",
+                    "content": item.content,
+                    "category": item.category,
+                    "source": item.source,
+                    "created_at": item.created_at.isoformat(),
+                }
+                for item in automatic
+            ]
+        }
+
+    @app.delete("/api/memories", status_code=204)
+    async def clear_memories() -> None:
+        async with database.session() as session:
+            await Repository(session).clear_memories(settings.telegram_allowed_user_id)
+
+    @app.delete("/api/memories/{memory_id}", status_code=204)
+    async def delete_memory(memory_id: str) -> None:
+        try:
+            source, raw_id = memory_id.split(":", 1)
+            item_id = int(raw_id)
+        except ValueError:
+            raise HTTPException(404, "Recuerdo no encontrado.") from None
+        async with database.session() as session:
+            repository = Repository(session)
+            deleted = (
+                await repository.delete_memory(settings.telegram_allowed_user_id, item_id)
+                if source == "explicit"
+                else await repository.delete_personal_memory(
+                    settings.telegram_allowed_user_id, item_id
+                )
+                if source == "automatic"
+                else False
+            )
+        if not deleted:
+            raise HTTPException(404, "Recuerdo no encontrado.")
 
     @app.get("/api/spotify/connect")
     async def spotify_connect() -> RedirectResponse:

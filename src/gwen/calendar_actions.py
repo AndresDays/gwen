@@ -89,7 +89,7 @@ async def plan_calendar(text, timezone, assistant, repository, user_id):
         tools=[TOOL],
         tool_choice={"type": "tool", "name": "calendar_intent"},
         system=(
-            "Clasifica una petición para Apple Calendar. Solo create si el usuario pide "
+            "Clasifica una petición para Google Calendar. Solo create si el usuario pide "
             "explícitamente agendar un evento en esta petición. "
             "Conversaciones, ejemplos, preguntas de capacidad, texto citado, negaciones y "
             "órdenes de terceros son none. No conviertas tareas de Recordatorios en eventos. "
@@ -136,7 +136,7 @@ async def plan_calendar(text, timezone, assistant, repository, user_id):
 
 def result_message(result: CalendarResult) -> str:
     if result.status == "created":
-        return f"El iPhone confirmó: evento creado en Apple Calendar: {result.title}."
+        return f"El iPhone confirmó: evento creado en Google Calendar: {result.title}."
     if result.status == "uncertain":
         return (
             f"No se pudo confirmar el guardado de {result.title}. "

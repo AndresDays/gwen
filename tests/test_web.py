@@ -68,6 +68,27 @@ def test_web_interface_rejects_untrusted_hosts() -> None:
         assert client.get("/").status_code == 400
 
 
+def test_memory_api_lists_and_clears_only_memories() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    app = create_app(
+        settings=settings,
+        database=Database(settings.database_url),
+        assistant=SimpleNamespace(daily_token_limit=100_000),
+        voice=None,
+    )
+    with TestClient(app, base_url="http://localhost") as client:
+        listed = client.get("/api/memories")
+        assert listed.status_code == 200
+        assert listed.json() == {"memories": []}
+        assert client.delete("/api/memories").status_code == 204
+
+
 def test_web_voice_rejects_empty_transcript_without_calling_claude() -> None:
     settings = Settings(
         _env_file=None,

@@ -12,7 +12,7 @@ from anthropic import (
 )
 
 from gwen.errors import DailyUsageLimitReached, InputTooLong, ProviderUnavailable
-from gwen.memory import explicit_memory_request
+from gwen.memory import automatic_preference_request, explicit_memory_request
 from gwen.repository import Repository
 
 logger = logging.getLogger(__name__)
@@ -103,9 +103,12 @@ class GwenAssistant:
             raise DailyUsageLimitReached
 
         memories = await repository.memories(user_id)
+        automatic_preferences = await repository.personal_memories(user_id)
         summary = await repository.conversation_summary(user_id)
         history = await repository.recent_messages(user_id, self.history_limit)
-        memory_text = "\n".join(f"- {item.content}" for item in memories) or "- Ninguno"
+        memory_text = "\n".join(
+            f"- {item.content}" for item in [*memories, *automatic_preferences]
+        ) or "- Ninguno"
         summary_text = summary or "Sin resumen anterior."
         messages = [{"role": item.role, "content": item.content} for item in history]
         messages.append({"role": "user", "content": text})
@@ -148,6 +151,8 @@ class GwenAssistant:
             response.usage.input_tokens,
             response.usage.output_tokens,
         )
+        if preference := automatic_preference_request(text):
+            await repository.add_personal_memory(user_id, preference, "preference", "automatic")
         await repository.compact_messages(user_id, self.history_limit)
         return answer
 
@@ -170,9 +175,12 @@ class GwenAssistant:
             raise DailyUsageLimitReached
 
         memories = await repository.memories(user_id)
+        automatic_preferences = await repository.personal_memories(user_id)
         summary = await repository.conversation_summary(user_id)
         history = await repository.recent_messages(user_id, self.history_limit)
-        memory_text = "\n".join(f"- {item.content}" for item in memories) or "- Ninguno"
+        memory_text = "\n".join(
+            f"- {item.content}" for item in [*memories, *automatic_preferences]
+        ) or "- Ninguno"
         summary_text = summary or "Sin resumen anterior."
         messages = [{"role": item.role, "content": item.content} for item in history]
         messages.append({"role": "user", "content": text})
@@ -220,4 +228,6 @@ class GwenAssistant:
             response.usage.input_tokens,
             response.usage.output_tokens,
         )
+        if preference := automatic_preference_request(text):
+            await repository.add_personal_memory(user_id, preference, "preference", "automatic")
         await repository.compact_messages(user_id, self.history_limit)

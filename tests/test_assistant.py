@@ -43,6 +43,35 @@ async def test_assistant_stores_natural_memory_without_calling_provider() -> Non
     await database.close()
 
 
+async def test_assistant_stores_only_safe_automatic_preferences() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from gwen.assistant import GwenAssistant
+    from gwen.repository import Repository
+
+    database = await _memory_repository()
+    assistant = GwenAssistant("test-key", "test-model", 10)
+    assistant.client.messages.create = AsyncMock(
+        return_value=SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="Entendido.")],
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+        )
+    )
+    async with database.session() as session:
+        repository = Repository(session)
+        assert await assistant.reply(42, "prefiero respuestas breves", repository) == "Entendido."
+        assert [item.content for item in await repository.personal_memories(42)] == [
+            "prefiero respuestas breves"
+        ]
+        await assistant.reply(42, "mi hermana Ana vive en Madrid", repository)
+        await assistant.reply(42, "prefiero usar mi password secreto", repository)
+        assert [item.content for item in await repository.personal_memories(42)] == [
+            "prefiero respuestas breves"
+        ]
+    await database.close()
+
+
 async def test_assistant_enforces_daily_token_limit_before_provider_call() -> None:
     from datetime import datetime
     from unittest.mock import AsyncMock
