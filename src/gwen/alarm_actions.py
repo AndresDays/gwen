@@ -31,7 +31,15 @@ TOOL = {
         "properties": {
             "decision": {"type": "string", "enum": ["create", "clarify", "none"]},
             "question": {"type": "string"},
-            "alarm": {"type": "object"},
+            "alarm": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "fire_at": {"type": "string"},
+                    "timezone": {"type": "string"},
+                },
+                "required": ["title", "fire_at", "timezone"],
+            },
         },
         "required": ["decision"],
     },
@@ -60,5 +68,8 @@ async def plan_alarm(text, timezone, assistant, repository, user_id):
         return None
     if data.get("decision") == "clarify":
         return str(data.get("question") or "¿A qué fecha y hora quieres la alarma?"), []
-    action = AlarmAction.model_validate(data.get("alarm", {}))
+    try:
+        action = AlarmAction.model_validate(data.get("alarm", {}))
+    except Exception as error:
+        raise ValueError("No pude entender una fecha y hora futuras para la alarma.") from error
     return f"Voy a poner la alarma «{action.title}» en tu iPhone.", [action]
