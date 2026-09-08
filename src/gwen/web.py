@@ -27,6 +27,8 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from gwen.alarm_actions import CAPABILITY as ALARM_CAPABILITY
+from gwen.alarm_actions import AlarmAction, plan_alarm
 from gwen.assistant import GwenAssistant
 from gwen.calendar_actions import (
     CAPABILITY,
@@ -96,6 +98,9 @@ class ChatResponse(BaseModel):
     audio: str | None = None
     audio_type: str | None = None
     actions: list[CalendarAction] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    alarm_actions: list[AlarmAction] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 
@@ -484,6 +489,21 @@ def create_app(
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(payload: ChatRequest, request: Request) -> ChatResponse:
         message = payload.message.strip()
+        capabilities = {
+            item.strip() for item in request.headers.get("x-gwen-capabilities", "").split(",")
+        }
+        if ALARM_CAPABILITY in capabilities:
+            require_calendar_session(request)
+            try:
+                async with database.session() as session:
+                    planned_alarm = await plan_alarm(
+                        message, request.headers.get("x-gwen-timezone", ""), assistant,
+                        Repository(session), settings.telegram_allowed_user_id
+                    )
+                if planned_alarm is not None:
+                    return ChatResponse(answer=planned_alarm[0], alarm_actions=planned_alarm[1])
+            except Exception as error:
+                raise safe_error(error) from None
         if request.headers.get("x-gwen-capabilities") == CAPABILITY:
             require_calendar_session(request)
             try:
