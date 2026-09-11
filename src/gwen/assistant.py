@@ -146,8 +146,15 @@ class GwenAssistant:
         ):
             return fallback
 
-    async def reply(self, user_id: int, text: str, repository: Repository) -> str:
-        if len(text) > self.max_input_chars:
+    async def reply(
+        self,
+        user_id: int,
+        text: str,
+        repository: Repository,
+        private_context: str | None = None,
+    ) -> str:
+        context = (private_context or "").strip()
+        if len(text) + len(context) > self.max_input_chars:
             raise InputTooLong
 
         memory_request = explicit_memory_request(text)
@@ -196,7 +203,14 @@ class GwenAssistant:
         ) or "- Ninguno"
         summary_text = summary or "Sin resumen anterior."
         messages = [{"role": item.role, "content": item.content} for item in history]
-        messages.append({"role": "user", "content": text})
+        provider_text = text
+        if context:
+            provider_text = (
+                "Contexto efímero capturado localmente en el iPhone. No lo menciones como "
+                "una transcripción ni lo conviertas en un recuerdo:\n"
+                f"{context}\n\nPetición actual del usuario:\n{text}"
+            )
+        messages.append({"role": "user", "content": provider_text})
         system = (
             f"{SYSTEM_PROMPT}\n\n{current_context()}\n\nRecuerdos:\n{memory_text}"
             f"\n\nContexto anterior compactado:\n{summary_text}"

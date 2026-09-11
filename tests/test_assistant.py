@@ -161,3 +161,35 @@ async def test_assistant_enforces_daily_token_limit_before_provider_call() -> No
             await assistant.reply(42, "hola", repository)
         assistant.client.messages.create.assert_not_awaited()
     await database.close()
+
+
+async def test_assistant_uses_private_context_without_saving_it() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from gwen.assistant import GwenAssistant
+    from gwen.repository import Repository
+
+    database = await _memory_repository()
+    assistant = GwenAssistant("test-key", "test-model", 10)
+    assistant.client.messages.create = AsyncMock(
+        return_value=SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="Tiene sentido.")],
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+        )
+    )
+    async with database.session() as session:
+        repository = Repository(session)
+        await assistant.reply(
+            42,
+            "¿qué opinas de eso?",
+            repository,
+            private_context="Hablábamos de cambiar de trabajo.",
+        )
+        sent = assistant.client.messages.create.await_args.kwargs["messages"][-1]["content"]
+        assert "Hablábamos de cambiar de trabajo." in sent
+        assert [item.content for item in await repository.recent_messages(42, 10)] == [
+            "¿qué opinas de eso?",
+            "Tiene sentido.",
+        ]
+    await database.close()

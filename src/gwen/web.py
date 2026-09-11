@@ -92,6 +92,11 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
 
 
+class ContextualVoiceRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2_000)
+    local_context: str = Field(default="", max_length=6_000)
+
+
 class ChatResponse(BaseModel):
     answer: str
     transcript: str | None = None
@@ -504,7 +509,7 @@ def create_app(
                     return ChatResponse(answer=planned_alarm[0], alarm_actions=planned_alarm[1])
             except Exception as error:
                 raise safe_error(error) from None
-        if request.headers.get("x-gwen-capabilities") == CAPABILITY:
+        if CAPABILITY in capabilities:
             require_calendar_session(request)
             try:
                 async with database.session() as session:
@@ -753,6 +758,49 @@ def create_app(
             raise
         except httpx.HTTPError as error:
             logger.warning("Web voice provider failed (%s)", type(error).__name__)
+            raise HTTPException(503, "La voz no está disponible ahora mismo.") from None
+        except Exception as error:
+            raise safe_error(error) from None
+
+    @app.post("/api/voice/text", response_model=ChatResponse)
+    async def contextual_voice(payload: ContextualVoiceRequest) -> ChatResponse:
+        if voice is None:
+            raise HTTPException(409, "La voz no está configurada.")
+        message = payload.message.strip()
+        context = payload.local_context.strip()
+        if not message:
+            raise HTTPException(422, "La petición de voz está vacía.")
+        today = datetime.now(ZoneInfo("America/Guatemala")).date()
+        try:
+            async with database.session() as session:
+                repository = Repository(session)
+                _, tts_characters = await repository.voice_usage(
+                    settings.telegram_allowed_user_id, today
+                )
+                answer = await assistant.reply(
+                    settings.telegram_allowed_user_id,
+                    message,
+                    repository,
+                    private_context=context or None,
+                )
+                if tts_characters + len(answer) > settings.daily_tts_character_limit:
+                    return ChatResponse(answer=answer, transcript=message)
+                spoken = await voice.synthesize(answer)
+                await repository.add_usage(
+                    settings.telegram_allowed_user_id,
+                    today,
+                    tts_characters=len(answer),
+                )
+            return ChatResponse(
+                answer=answer,
+                transcript=message,
+                audio=base64.b64encode(spoken).decode("ascii"),
+                audio_type="audio/mpeg",
+            )
+        except HTTPException:
+            raise
+        except httpx.HTTPError as error:
+            logger.warning("Contextual voice provider failed (%s)", type(error).__name__)
             raise HTTPException(503, "La voz no está disponible ahora mismo.") from None
         except Exception as error:
             raise safe_error(error) from None

@@ -1,6 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -173,6 +173,46 @@ def test_voice_endpoint_preserves_mime_and_returns_transcript() -> None:
     assert response.json()["transcript"] == "Hola Gwen"
     assert response.json()["answer"] == "Te escuché."
     assert voice.transcribe.await_args.args[2] == "audio/webm"
+
+
+def test_contextual_voice_sends_ephemeral_context_without_persisting_it() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test-token",
+        telegram_allowed_user_id=42,
+        anthropic_api_key="test-key",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    assistant = SimpleNamespace(
+        reply=AsyncMock(return_value="Suena como una idea razonable."),
+        daily_token_limit=settings.daily_token_limit,
+    )
+    voice = SimpleNamespace(synthesize=AsyncMock(return_value=b"mp3"))
+    app = create_app(
+        settings=settings,
+        database=Database(settings.database_url),
+        assistant=assistant,
+        voice=voice,
+    )
+
+    with TestClient(app, base_url="http://localhost") as client:
+        response = client.post(
+            "/api/voice/text",
+            json={
+                "message": "¿qué opinas de eso?",
+                "local_context": "Estábamos comparando dos opciones para mudarnos.",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["audio_type"] == "audio/mpeg"
+    assert response.json()["transcript"] == "¿qué opinas de eso?"
+    assistant.reply.assert_awaited_once_with(
+        42,
+        "¿qué opinas de eso?",
+        ANY,
+        private_context="Estábamos comparando dos opciones para mudarnos.",
+    )
 
 
 def test_pwa_assets_are_installable_without_caching_private_data() -> None:
