@@ -12,9 +12,12 @@ def test_current_context_uses_guatemala_time() -> None:
 
 def test_system_prompt_requests_natural_conversation() -> None:
     assert "chatbot genérico" in SYSTEM_PROMPT
-    assert "humor moderado" in SYSTEM_PROMPT
+    assert "nunca seas cruel" in SYSTEM_PROMPT
     assert "Evita títulos, listas" in SYSTEM_PROMPT
     assert "No finjas experiencias" in SYSTEM_PROMPT
+    assert "bromista" in SYSTEM_PROMPT
+    assert "sarcasmo ligero" in SYSTEM_PROMPT
+    assert "preocupado, vulnerable" in SYSTEM_PROMPT
 
 
 async def _memory_repository():
